@@ -7,5 +7,6 @@
 		"module": "preserve",
 		"moduleResolution": "bundler"
 	},
-	"include": ["src/client", "src/admin-data.ts", "src/fields.ts"]
+	"include": ["src/client", "src/extensions/client", "src/admin-data.ts", "src/fields.ts"],
+	"exclude": []
 }

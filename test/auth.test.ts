@@ -78,7 +78,7 @@ describe("sign-in through the console", () => {
 		const html = await screen.text();
 		expect(html).toContain('"email":"info@klant.test"');
 		expect(html).toContain('"name":"quote"');
-		expect(html).toContain('<script type="module" src="/admin/assets/admin-test.js">');
+		expect(html).toContain('<script type="module" src="/admin/admin.js">');
 		expect(screen.headers.get("cache-control")).toBe("no-store");
 
 		const value = [{ _type: "quote", _key: "q", text: "Nieuw" }];

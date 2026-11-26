@@ -3,7 +3,6 @@ import { csrf } from "hono/csrf";
 import { raw } from "hono/html";
 import type { Child } from "hono/jsx";
 import type { AdminData } from "./admin-data.ts";
-import { adminCss, adminJs, hash } from "./assets.js";
 import { createAuth, PROVIDER_ID, type Auth, type AuthOptions } from "./auth.ts";
 import {
 	clean,
@@ -30,12 +29,10 @@ export type RoutesConfig = {
 	media?: R2Bucket;
 	images?: ImagesBinding;
 	stylesheet: string | false;
+	admin: { script: string; style?: string };
 };
 
 type Env = { Variables: { auth: Auth; email: string } };
-
-const JS = `/admin/assets/admin-${hash}.js`;
-const CSS = `/admin/assets/admin-${hash}.css`;
 
 export function createRoutes(config: RoutesConfig) {
 	const { pages, schema, db, auth, media, images } = config;
@@ -51,18 +48,6 @@ export function createRoutes(config: RoutesConfig) {
 		// Editing is off: no admin and no sign-in, the pages show the defaults.
 		return app;
 	}
-
-	// The browser bundle. The hash changes with the content, so it caches for good.
-	const asset = (body: string, type: string) => () =>
-		new Response(body, {
-			headers: {
-				"content-type": type,
-				"cache-control": "public, max-age=31536000, immutable",
-				"x-content-type-options": "nosniff",
-			},
-		});
-	app.get(JS, asset(adminJs, "text/javascript; charset=utf-8"));
-	app.get(CSS, asset(adminCss, "text/css; charset=utf-8"));
 
 	for (const path of ["/admin/*", "/api/auth/*"]) {
 		app.use(path, async (c, next) => {
@@ -167,7 +152,7 @@ export function createRoutes(config: RoutesConfig) {
 			textStyles: schema.textStyles,
 		};
 		return c.html(
-			<Shell title={found.text.label} stylesheet={config.stylesheet} script>
+			<Shell title={found.text.label} stylesheet={config.stylesheet} admin={config.admin} script>
 				<div id="admin"></div>
 				{/* "<" escaped, so a text can't close the script tag. */}
 				<script type="application/json" id="admin-data">
@@ -191,7 +176,7 @@ export function createRoutes(config: RoutesConfig) {
 
 	function Refused() {
 		return (
-			<Shell title="Geen toegang" stylesheet={false}>
+			<Shell title="Geen toegang" stylesheet={false} admin={config.admin}>
 				<main class="refused">
 					<h1>Geen toegang</h1>
 					<p>Inloggen is niet gelukt. Dit adres heeft geen toegang tot deze site.</p>
@@ -220,6 +205,8 @@ function waitUntil(c: Context, promise: Promise<unknown>) {
 function Shell(props: {
 	title: string;
 	stylesheet: string | false;
+	// The site's admin bundle (createEditor `admin`).
+	admin: { script: string; style?: string };
 	script?: boolean;
 	children: Child;
 }) {
@@ -234,8 +221,8 @@ function Shell(props: {
 					<title>{props.title} - Beheer</title>
 					{/* The site's stylesheet, so texts look as on the page. */}
 					{props.stylesheet && <link rel="stylesheet" href={props.stylesheet} />}
-					<link rel="stylesheet" href={CSS} />
-					{props.script && <script type="module" src={JS}></script>}
+					{props.admin.style && <link rel="stylesheet" href={props.admin.style} />}
+					{props.script && <script type="module" src={props.admin.script}></script>}
 				</head>
 				<body>{props.children}</body>
 			</html>

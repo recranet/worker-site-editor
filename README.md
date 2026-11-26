@@ -1,21 +1,28 @@
 # worker-site-editor
 
-Text editing for Recranet's customer sites on Cloudflare Workers (sites from [recranet/worker-site-starter](https://github.com/recranet/worker-site-starter)). One versioned package instead of a copy per site:
+Text editing for Recranet's customer sites on Cloudflare Workers (sites from [recranet/worker-site-starter](https://github.com/recranet/worker-site-starter)). One versioned package instead of a copy per site.
 
-- `/admin/`: the Portable Text editor, one screen per editable text, in Dutch.
+## Core and extensions
+
+The core is small:
+
 - Sign-in through the console's OpenID provider (`auth.recranet.dev`, `auth.elloro.dev`) with Better Auth: a mail link for the customer, the console for staff. The site keeps no passwords or users; the session is an encrypted cookie.
+- `/admin/`: the Portable Text editor, one screen per editable text, in Dutch. Built-in: bold, italic, underline, strike-through, H2, H3, quote, lists, link, and with an R2 bucket one image and a gallery.
 - Texts in the site's D1, images in its R2 bucket (optional), scaled by Cloudflare Images (optional).
-- Rendering of the texts for the pages, with the site's own text styles and block types.
+- Rendering of the texts for the pages.
+- `defineBlock` and `defineBlockEditor`: the registration point for blocks, with their own editor UI.
 
-What stays in the site: its pages and which texts are editable, its text styles, its own blocks, its stylesheet, its bindings and secrets. The package declares no bindings; the site passes them in.
+Everything else is an extension, in `@recranet/worker-site-editor/extensions`: the starter's page blocks (hero, feature, cards, features, stats, cta, marquee, map, accordion, quote, checklist, labels) and example text styles (highlight, footnote, lead, button link). They use the same API a site's own blocks do. A site registers the ones it wants, copies one to change it, or writes its own. A block that several sites need moves into the extensions.
+
+What stays in the site: its pages and which texts are editable, its choice of extensions and text styles, its own blocks, its stylesheet, its bindings and secrets. The package declares no bindings; the site passes them in.
 
 ## Install
 
 ```bash
-pnpm add @recranet/worker-site-editor
+pnpm add @recranet/worker-site-editor hono @portabletext/editor @base-ui/react react react-dom
 ```
 
-`hono` is a peer dependency: the site's own.
+`hono`, `@portabletext/editor`, `@base-ui/react`, `react` and `react-dom` are peer dependencies: the site installs them, so the core and the site's block editors share one copy of each. Libraries only the core uses (Better Auth, `@portabletext/to-html`) are the package's own dependencies.
 
 ## Wire a site
 
@@ -41,7 +48,7 @@ env: {
 
 The OIDC client comes from `console oidc-clients create <customer-id> -t <tenant> --name <host> --redirect-uri https://<host>/api/auth/callback/console` (the `workers:console-oidc` skill). Its secret goes straight into `.dev.vars` as `OIDC_CLIENT_SECRET`, never through chat. `BETTER_AUTH_SECRET` encrypts the session cookie: `openssl rand -base64 32`, also in `.dev.vars`. `cf deploy --secrets-file .dev.vars` uploads both.
 
-### The editor
+### The editor (server)
 
 Once, at module scope, with the bindings from `cloudflare:workers`:
 
@@ -49,8 +56,8 @@ Once, at module scope, with the bindings from `cloudflare:workers`:
 // src/editor.ts
 import { env } from "cloudflare:workers";
 import { createEditor } from "@recranet/worker-site-editor";
-import { blocks } from "./blocks.tsx";
-import { textStyles } from "./text-styles.ts";
+import { hero, quote, highlight, footnote } from "@recranet/worker-site-editor/extensions";
+import { openingHours } from "./blocks/opening-hours.tsx";
 
 export const editor = createEditor({
 	db: env.DB,
@@ -61,10 +68,10 @@ export const editor = createEditor({
 		clientSecret: env.OIDC_CLIENT_SECRET,
 		secret: env.BETTER_AUTH_SECRET,
 	},
-	media: env.MEDIA, // leave out: no images
+	media: env.MEDIA, // leave out: no image or gallery
 	images: env.IMAGES, // leave out: images at their original size
-	blocks,
-	textStyles,
+	blocks: [hero, quote, openingHours],
+	textStyles: { decorators: { highlight, footnote } },
 	// The editable texts per page, in the admin switcher's order. The keys are
 	// the rows in D1: renaming one loses its saved text.
 	pages: {
@@ -104,9 +111,51 @@ app.route("/", editor.routes);
 - `text.page("body")` renders it as the page's sections: blocks with `section: true` full width, everything between them in the text column (`column` option, default the starter's `<section><div class="container"><div class="article max-w-3xl">…`).
 - `editor.render(value)` renders any Portable Text with the site's styles and blocks.
 
-The admin loads the site's stylesheet (`stylesheet` option, default `/style.css`) so texts look as on the page. Its own script and styles come from the package, served under `/admin/assets/`: the site builds nothing for the admin.
+### The admin bundle (browser)
 
-The built-in image and gallery blocks use Tailwind classes. Let the site's Tailwind see them, in `src/styles/app.css`:
+The site builds the admin's browser code with its own Vite, so its block editors land in the same bundle as the core's editor:
+
+```ts
+// src/admin.ts
+import "@recranet/worker-site-editor/admin.css";
+import { mountAdmin } from "@recranet/worker-site-editor/admin";
+import { heroEditor } from "@recranet/worker-site-editor/extensions/admin";
+import { openingHoursEditor } from "./blocks/opening-hours.editor.tsx";
+
+mountAdmin({ editors: [heroEditor, openingHoursEditor] });
+```
+
+In `vite.config.ts` (the starter has this already, with `src/admin/admin.tsx` as input):
+
+```ts
+environments: {
+	client: {
+		build: {
+			chunkSizeWarningLimit: 1000,
+			rolldownOptions: {
+				// Base UI marks its modules "use client", which means nothing here.
+				onwarn(warning, warn) {
+					if (warning.code !== "MODULE_LEVEL_DIRECTIVE") warn(warning);
+				},
+				input: { admin: "src/admin.ts" },
+				output: { entryFileNames: "admin/[name].js", assetFileNames: "admin/style[extname]" },
+			},
+		},
+	},
+},
+```
+
+The admin page loads `/admin/admin.js` and `/admin/style.css`. Under `cf dev` Vite serves the source instead; tell the editor:
+
+```ts
+admin: import.meta.env.DEV ? { script: "/src/admin.ts" } : undefined,
+```
+
+It also loads the site's stylesheet (`stylesheet` option, default `/style.css`) so texts look as on the page.
+
+### Tailwind
+
+The built-in image and gallery and the extension blocks use Tailwind classes; the extension blocks also use the starter's own classes from its `app.css` (`container`, `btn`, `heading-3`, `p-flow`, `mb-section-half`, `hero-shade`, `animate-marquee`, …). Let the site's Tailwind see the package, in `src/styles/app.css`:
 
 ```css
 @source "../../node_modules/@recranet/worker-site-editor/dist";
@@ -124,55 +173,107 @@ pnpm exec cf d1 migrations apply <database-id> --dir node_modules/@recranet/work
 
 Add `--local` for `cf dev`. A site from the starter that already has the `block` table is fine: the first migration is `CREATE TABLE IF NOT EXISTS`. A package release that adds a migration says so in its notes.
 
-## Custom blocks
+## Writing a block
 
-A site's own block is one definition: its fields (the editor's form and the check on save) and its render (the page).
+A block has two halves with the same `name`: the server half (fields and page render) and, optionally, its own editor UI. They live in separate files because the server renders with Hono JSX and the admin with React.
+
+### Server: `defineBlock`
 
 ```tsx
-// src/blocks.tsx
+// src/blocks/opening-hours.tsx
 import { defineBlock } from "@recranet/worker-site-editor";
 
-export const quote = defineBlock({
-	name: "quote",
-	label: "Citaat met bron", // in the editor's "Onderdeel" menu
+export const openingHours = defineBlock({
+	name: "openingHours",
+	label: "Openingstijden", // in the editor's "Onderdeel" menu
+	section: false, // true: full width in text.page()
 	fields: [
-		{ name: "text", label: "Citaat", kind: "textarea", required: true },
-		{ name: "source", label: "Bron", kind: "text" },
+		{ name: "title", label: "Titel", kind: "text" },
+		{
+			name: "days",
+			label: "Dagen",
+			item: "Dag",
+			kind: "items",
+			fields: [
+				{ name: "day", label: "Dag", kind: "text", required: true },
+				{ name: "hours", label: "Tijden", kind: "text", required: true },
+			],
+		},
 	],
 	render: (value) => (
-		<figure class="quote">
-			<blockquote>{value.text}</blockquote>
-			{value.source && <figcaption>{value.source}</figcaption>}
-		</figure>
+		<dl class="opening-hours">
+			{value.days?.map((d) => (
+				<>
+					<dt>{d.day}</dt>
+					<dd>{d.hours}</dd>
+				</>
+			))}
+		</dl>
 	),
 });
-
-export const blocks = [quote];
 ```
 
 - Field kinds: `text`, `textarea`, `url`, `select` (with `options`), `image`, and `items` (a list, each item with its own fields, no lists in lists). `required` makes the editor ask for it and the save refuse without it.
-- `value` is typed from the fields. It was checked when saved: only known fields, safe URLs, images from `/media/` or the site's own files. Text is plain text: render it through JSX, which escapes it.
-- `section: true` renders the block full width in `text.page()`; otherwise it sits in the text column.
+- The fields are the stored shape and the server's check on every save: only known fields, safe URLs, images from `/media/` or the site's own files. Whatever the block's editor UI does, the saved value must fit them.
+- `value` is typed from the fields. Text is plain text: render it through JSX, which escapes it.
 - `render(value, ctx)` gets `ctx.image(image, { sizes, class, eager })`, an `<img>` string with a srcset when Images scales uploads, and `ctx.srcset(src, width)`. Render must be synchronous. A render that throws leaves the block out and logs.
 - Names are stored in the texts. A block type the site removes is skipped on the page and in the editor, but stays in the stored text: the next save keeps it where it was, so adding the block back brings it back.
-- A block that more sites need moves into this package.
+
+### Admin: `defineBlockEditor`
+
+Without one, the block's dialog is a form generated from its fields and it shows in the text as a card with its label and first text. With one, the block brings its own UI:
+
+```tsx
+// src/blocks/opening-hours.editor.tsx
+/** @jsxImportSource react */
+import { defineBlockEditor } from "@recranet/worker-site-editor/admin";
+
+export const openingHoursEditor = defineBlockEditor({
+	name: "openingHours",
+	// The dialog. onChange merges fields into the value; fields() gives the
+	// generated inputs for some or all fields, to mix with your own.
+	Edit: ({ value, onChange, fields }) => (
+		<>
+			{fields(["title"])}
+			<button type="button" className="button small" onClick={() => onChange({ days: weekdays() })}>
+				Ma–vr invullen
+			</button>
+			{fields(["days"])}
+		</>
+	),
+	// How the block shows inside the text, under its label.
+	Preview: ({ value }) => <p>{(value.days as unknown[] | undefined)?.length ?? 0} dagen</p>,
+	// An extra check before Toepassen, in Dutch; "" when fine.
+	check: (value) => (value.days ? "" : "Vul de dagen in."),
+});
+```
+
+`Edit` also gets `upload(file, alt)` (puts an image in the site's bucket, for an image field) and `media` (whether the site has one). The admin's classes (`button`, `input`, `field`, …) are in `admin.css`; the site's stylesheet is loaded too.
+
+The editor UI is React with Base UI and the Portable Text editor available. Those are peer dependencies, so a block editor that imports `@base-ui/react` or `react` uses the same copy as the core. Register the editor in the site's admin entry (`mountAdmin({ editors })`) and the block in `createEditor({ blocks })`; the browser warns about an editor without a block.
+
+The extensions show the range: `quote` is fields and a render only, `hero` has a `Preview` and wraps the generated form, `labels` replaces the form with one text area.
 
 ## Text styles
 
-On top of the built-in bold, italic, underline, strike-through, H2, H3, quote, lists and link:
+On top of the built-ins, a site adds its own or picks the examples:
 
 ```ts
-// src/text-styles.ts
 import type { TextStyles } from "@recranet/worker-site-editor";
+import { highlight, footnote, lead, button } from "@recranet/worker-site-editor/extensions";
 
 export const textStyles: TextStyles = {
-	blockStyles: { lead: { label: "Intro", tag: "p", class: "lead" } },
-	decorators: { highlight: { label: "Markeren", tag: "mark", class: "highlight" } },
-	linkStyles: { button: { label: "Knop", class: "btn btn-primary" } },
+	blockStyles: { lead },
+	decorators: {
+		highlight,
+		footnote,
+		smallCaps: { label: "Kleinkapitaal", tag: "span", class: "small-caps" },
+	},
+	linkStyles: { button },
 };
 ```
 
-Each is a button in the editor and renders as `tag` with `class` on the page. Keys are stored; removing one shows that text as normal text.
+Each is a button in the editor and renders as `tag` with `class` on the page. The keys are stored; removing one shows that text as normal text. The classes come from the site's stylesheet.
 
 ## Sign-in
 
@@ -196,7 +297,7 @@ pnpm check
 pnpm build
 ```
 
-The tests run in Node: D1 is `node:sqlite` with the package's migration, the provider a fetch mock. `pnpm build` builds the admin's browser bundle with Vite (`src/client/`), compiles the server code with `tsc` and embeds the bundle in `dist/assets.js`.
+The tests run in Node: D1 is `node:sqlite` with the package's migration, the provider a fetch mock. `pnpm build` compiles the server code (Hono JSX) and the admin code (React) with `tsc` into `dist/`; the site's Vite bundles the admin.
 
 ## Releases
 

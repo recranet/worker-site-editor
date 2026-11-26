@@ -8,5 +8,5 @@
 		"types": ["@cloudflare/workers-types"]
 	},
 	"include": ["src"],
-	"exclude": ["src/client"]
+	"exclude": ["src/client", "src/extensions/client"]
 }

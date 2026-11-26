@@ -206,9 +206,6 @@ importers:
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
-      vite:
-        specifier: ^8.0.0
-        version: 8.3.8(@types/node@26.6.11)
       vitest:
         specifier: ^5.0.5
         version: 5.1.2(@types/node@26.6.11)(vite@8.3.8(@types/node@26.6.11))

@@ -1,0 +1,9 @@
+{
+	"extends": "./tsconfig.client.json",
+	"compilerOptions": {
+		"noEmit": false,
+		"declaration": true,
+		"outDir": "dist",
+		"rootDir": "src"
+	}
+}

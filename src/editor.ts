@@ -46,6 +46,10 @@ export type EditorOptions<P extends Record<string, PageDefinition>> = {
 	textStyles?: TextStyles;
 	// The site's stylesheet, loaded in the admin so texts look as on the page.
 	stylesheet?: string | false;
+	// Where the site's admin bundle is served: its entry calls mountAdmin
+	// (README, "The admin bundle"). Default /admin/admin.js and /admin/style.css,
+	// the starter's build output; in `cf dev` the entry's source path.
+	admin?: { script: string; style?: string };
 	// Wraps the paragraphs between section blocks in texts().page().
 	column?: (html: string) => string;
 };
@@ -74,6 +78,7 @@ export function createEditor<const P extends Record<string, PageDefinition>>(
 		media: options.media,
 		images: options.images,
 		stylesheet: options.stylesheet ?? "/style.css",
+		admin: options.admin ?? { script: "/admin/admin.js", style: "/admin/style.css" },
 	});
 
 	// A page's texts in one query. `text(name)` renders one as HTML;

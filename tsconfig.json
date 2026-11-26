@@ -16,5 +16,5 @@
 		"jsxImportSource": "hono/jsx"
 	},
 	"include": ["src", "test", "scripts", "vite.config.ts", "vitest.config.ts"],
-	"exclude": ["src/client"]
+	"exclude": ["src/client", "src/extensions/client"]
 }

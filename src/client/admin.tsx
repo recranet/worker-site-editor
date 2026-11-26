@@ -33,66 +33,91 @@ import {
 import { Fragment, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { AdminData } from "../admin-data.ts";
-import type { Field, ItemField } from "../fields.ts";
+import type { Field, ImageValue, ItemField } from "../fields.ts";
+import type { BlockEditor, BlockFields } from "./block-editor.ts";
 
-// The server put this screen's data in the page (routes.tsx), with the site's
-// own blocks and text styles: this bundle is the same for every site.
-const data = JSON.parse(document.getElementById("admin-data")!.textContent!) as AdminData;
+// The server puts the screen's data in the page (routes.tsx), with the site's
+// blocks (their fields) and text styles; the site's bundle passes the blocks'
+// own editor UI (defineBlockEditor) to mountAdmin. Both are set once, before
+// the first render.
+let data: AdminData;
 type Part = AdminData["blocks"][number];
-const parts: Record<string, Part> = Object.fromEntries(data.blocks.map((b) => [b.name, b]));
-const { blockStyles = {}, decorators = {}, linkStyles = {} } = data.textStyles;
+let parts: Record<string, Part> = {};
+let editors = new Map<string, BlockEditor>();
+let blockStyles: NonNullable<AdminData["textStyles"]["blockStyles"]> = {};
+let decorators: NonNullable<AdminData["textStyles"]["decorators"]> = {};
+let linkStyles: NonNullable<AdminData["textStyles"]["linkStyles"]> = {};
+
+// The admin's screen, in the element with id "admin". The site's admin entry
+// calls this with its blocks' editors: mountAdmin({ editors: [hero, quote] }).
+export function mountAdmin(options: { editors?: readonly BlockEditor[] } = {}) {
+	data = JSON.parse(document.getElementById("admin-data")!.textContent!) as AdminData;
+	parts = Object.fromEntries(data.blocks.map((b) => [b.name, b]));
+	editors = new Map((options.editors ?? []).map((e) => [e.name, e]));
+	for (const name of editors.keys()) {
+		if (!parts[name])
+			console.warn(`block editor "${name}" has no block on the server (createEditor blocks)`);
+	}
+	({ blockStyles = {}, decorators = {}, linkStyles = {} } = data.textStyles);
+	const schemaDefinition = buildSchema();
+	const nodes = buildNodes();
+	createRoot(document.getElementById("admin")!).render(
+		<Screen schemaDefinition={schemaDefinition} nodes={nodes} />,
+	);
+}
 
 // What the customer can do: everything @portabletext/to-html renders on the
 // public pages without custom components, images (blocks.ts, media.ts), the
 // site's own text styles and its blocks.
-const schemaDefinition = defineSchema({
-	decorators: [
-		{ name: "strong" },
-		{ name: "em" },
-		{ name: "underline" },
-		{ name: "strike-through" },
-		...Object.keys(decorators).map((name) => ({ name })),
-	],
-	styles: [
-		{ name: "normal" },
-		{ name: "h2" },
-		{ name: "h3" },
-		{ name: "blockquote" },
-		...Object.keys(blockStyles).map((name) => ({ name })),
-	],
-	annotations: ["link", ...Object.keys(linkStyles)].map((name) => ({
-		name,
-		fields: [{ name: "href", type: "string" }],
-	})),
-	lists: [{ name: "bullet" }, { name: "number" }],
-	inlineObjects: [],
-	blockObjects: [
-		{
-			name: "image",
-			fields: [
-				{ name: "src", type: "string" },
-				{ name: "alt", type: "string" },
-				{ name: "width", type: "number" },
-				{ name: "height", type: "number" },
-			],
-		},
-		// Several images, each { _key, src, alt, width, height }.
-		{ name: "gallery", fields: [{ name: "images", type: "array" }] },
-		// The page parts (parts.ts): lists are arrays, images objects, the rest strings.
-		...Object.entries(parts).map(([name, part]) => ({
+const buildSchema = () =>
+	defineSchema({
+		decorators: [
+			{ name: "strong" },
+			{ name: "em" },
+			{ name: "underline" },
+			{ name: "strike-through" },
+			...Object.keys(decorators).map((name) => ({ name })),
+		],
+		styles: [
+			{ name: "normal" },
+			{ name: "h2" },
+			{ name: "h3" },
+			{ name: "blockquote" },
+			...Object.keys(blockStyles).map((name) => ({ name })),
+		],
+		annotations: ["link", ...Object.keys(linkStyles)].map((name) => ({
 			name,
-			fields: part.fields.map((f) => ({
-				name: f.name,
-				type:
-					f.kind === "items"
-						? ("array" as const)
-						: f.kind === "image"
-							? ("object" as const)
-							: ("string" as const),
-			})),
+			fields: [{ name: "href", type: "string" }],
 		})),
-	],
-});
+		lists: [{ name: "bullet" }, { name: "number" }],
+		inlineObjects: [],
+		blockObjects: [
+			{
+				name: "image",
+				fields: [
+					{ name: "src", type: "string" },
+					{ name: "alt", type: "string" },
+					{ name: "width", type: "number" },
+					{ name: "height", type: "number" },
+				],
+			},
+			// Several images, each { _key, src, alt, width, height }.
+			{ name: "gallery", fields: [{ name: "images", type: "array" }] },
+			// The page parts (parts.ts): lists are arrays, images objects, the rest strings.
+			...Object.entries(parts).map(([name, part]) => ({
+				name,
+				fields: part.fields.map((f) => ({
+					name: f.name,
+					type:
+						f.kind === "items"
+							? ("array" as const)
+							: f.kind === "image"
+								? ("object" as const)
+								: ("string" as const),
+				})),
+			})),
+		],
+	});
 
 type Image = { _key?: string; src: string; alt: string; width?: number; height?: number };
 
@@ -128,7 +153,7 @@ const asImage = (v: unknown) =>
 const newKey = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 // The card's line: the first text field that has a value, else the first item's.
-function summary(value: PartValue, fields: Field[]): string {
+function summary(value: PartValue, fields: readonly Field[]): string {
 	for (const f of fields) {
 		if ((f.kind === "text" || f.kind === "textarea") && asText(value[f.name]))
 			return asText(value[f.name]);
@@ -143,7 +168,7 @@ function summary(value: PartValue, fields: Field[]): string {
 	return "Nog leeg";
 }
 
-function firstImage(value: PartValue, fields: Field[]): Image | undefined {
+function firstImage(value: PartValue, fields: readonly Field[]): Image | undefined {
 	for (const f of fields) {
 		if (f.kind === "image" && asImage(value[f.name])) return asImage(value[f.name]);
 		if (f.kind === "items") {
@@ -156,7 +181,7 @@ function firstImage(value: PartValue, fields: Field[]): Image | undefined {
 	return undefined;
 }
 
-const nodes = [
+const buildNodes = () => [
 	defineTextBlock({
 		type: "block",
 		render: ({ attributes, children, node }) => {
@@ -241,15 +266,25 @@ const nodes = [
 			render: ({ attributes, children, node, path, selected }) => {
 				const value = node as PartValue;
 				const image = firstImage(value, part.fields);
+				const Preview = editors.get(type)?.Preview;
 				return (
 					<div {...attributes} className={selected ? "pt-part selected" : "pt-part"}>
 						{children}
 						<div className="pt-part-body" contentEditable={false}>
-							{image ? <img src={preview(image.src)} alt="" /> : null}
-							<div>
-								<div className="pt-part-type">{part.label}</div>
-								<div className="pt-part-summary">{summary(value, part.fields)}</div>
-							</div>
+							{Preview ? (
+								<div className="pt-part-preview">
+									<div className="pt-part-type">{part.label}</div>
+									<Preview value={value as BlockFields} />
+								</div>
+							) : (
+								<>
+									{image ? <img src={preview(image.src)} alt="" /> : null}
+									<div>
+										<div className="pt-part-type">{part.label}</div>
+										<div className="pt-part-summary">{summary(value, part.fields)}</div>
+									</div>
+								</>
+							)}
 							<button
 								type="button"
 								className="button small"
@@ -279,14 +314,13 @@ const nodes = [
 	),
 ];
 
-// The switcher's items, grouped by page. The trigger shows "Page: Label".
-const groups = data.pages.map((page) => ({
-	value: page.title,
-	items: page.texts.map((text) => ({ value: text.value, label: `${page.title}: ${text.label}` })),
-}));
-
 // Each text has its own URL, so switching loads that page.
 function TextSelect() {
+	// The switcher's items, grouped by page. The trigger shows "Page: Label".
+	const groups = data.pages.map((page) => ({
+		value: page.title,
+		items: page.texts.map((text) => ({ value: text.value, label: `${page.title}: ${text.label}` })),
+	}));
 	return (
 		<Select.Root
 			items={groups}
@@ -490,7 +524,7 @@ function LinkPopover(props: {
 
 // Uploads one image to R2 (POST /admin/media). The text keeps only its path
 // and size; Save stores it like the rest.
-async function upload(file: File, alt: string): Promise<Image> {
+async function upload(file: File, alt: string): Promise<ImageValue> {
 	const bitmap = await createImageBitmap(file);
 	const body = new FormData();
 	body.append("file", file);
@@ -836,7 +870,7 @@ function PartPopover() {
 }
 
 // What's missing before a part or item can be applied, or "" when it's complete.
-function missing(value: PartValue, fields: Field[]): string {
+function missing(value: PartValue, fields: readonly Field[]): string {
 	for (const f of fields) {
 		const v = value[f.name];
 		if (f.kind === "items") {
@@ -877,10 +911,12 @@ function PartEditor() {
 	}, []);
 
 	const part = edit ? parts[edit.type] : undefined;
+	const Edit = edit ? editors.get(edit.type)?.Edit : undefined;
 
 	const apply = () => {
 		if (!edit || !part) return;
-		const problem = missing(value, part.fields);
+		const problem =
+			missing(value, part.fields) || editors.get(edit.type)?.check?.(value as BlockFields) || "";
 		if (problem) return setProblem(problem);
 		if (edit.path) {
 			// Emptied fields leave the block, set ones are written.
@@ -909,13 +945,28 @@ function PartEditor() {
 				<Dialog.Backdrop className="backdrop" />
 				<Dialog.Popup className="popup dialog">
 					<Dialog.Title className="popup-title">{part?.label}</Dialog.Title>
-					{part && (
-						<Fields
-							fields={part.fields}
-							value={value}
-							onChange={(next) => setValue((current) => ({ ...current, ...next }))}
-						/>
-					)}
+					{part &&
+						(Edit ? (
+							<Edit
+								value={value as BlockFields}
+								onChange={(next) => setValue((current) => ({ ...current, ...next }))}
+								upload={upload}
+								media={data.media}
+								fields={(names?: string[]) => (
+									<Fields
+										fields={names ? part.fields.filter((f) => names.includes(f.name)) : part.fields}
+										value={value}
+										onChange={(next) => setValue((current) => ({ ...current, ...next }))}
+									/>
+								)}
+							/>
+						) : (
+							<Fields
+								fields={part.fields}
+								value={value}
+								onChange={(next) => setValue((current) => ({ ...current, ...next }))}
+							/>
+						))}
 					{problem && (
 						<p className="problem" role="alert">
 							{problem}
@@ -933,7 +984,11 @@ function PartEditor() {
 	);
 }
 
-function Fields(props: { fields: Field[]; value: PartValue; onChange: (next: PartValue) => void }) {
+function Fields(props: {
+	fields: readonly Field[];
+	value: PartValue;
+	onChange: (next: PartValue) => void;
+}) {
 	return (
 		<div className="fields">
 			{props.fields.map((f) =>
@@ -1158,7 +1213,11 @@ function EditForm() {
 	);
 }
 
-function Screen() {
+function Screen(props: {
+	schemaDefinition: ReturnType<typeof buildSchema>;
+	nodes: ReturnType<typeof buildNodes>;
+}) {
+	const { schemaDefinition, nodes } = props;
 	return (
 		<EditorProvider
 			initialConfig={{ schemaDefinition, initialValue: data.value as PortableTextBlock[] }}
@@ -1184,5 +1243,3 @@ function Screen() {
 		</EditorProvider>
 	);
 }
-
-createRoot(document.getElementById("admin")!).render(<Screen />);

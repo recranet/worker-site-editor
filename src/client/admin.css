@@ -334,7 +334,7 @@ main {
 	font-weight: 600;
 }
 
-/* Page parts (parts.ts): a card in the text, the menu that inserts one and its form. */
+/* Blocks (defineBlock): a card in the text, or the block editor's Preview; the menu that inserts one and its form. */
 .pt-part {
 	margin: 1rem 0;
 }
@@ -355,7 +355,7 @@ main {
 	flex: 1;
 	min-width: 0;
 }
-.pt-part-body img {
+.pt-part-body > img {
 	width: 4rem;
 	height: 3rem;
 	object-fit: cover;

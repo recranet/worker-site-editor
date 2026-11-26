@@ -12,29 +12,44 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"default": "./dist/index.js"
+		},
+		"./extensions": {
+			"types": "./dist/extensions/index.d.ts",
+			"default": "./dist/extensions/index.js"
+		},
+		"./admin": {
+			"types": "./dist/client/index.d.ts",
+			"default": "./dist/client/index.js"
+		},
+		"./admin.css": "./dist/client/admin.css",
+		"./extensions/admin": {
+			"types": "./dist/extensions/client/index.d.ts",
+			"default": "./dist/extensions/client/index.js"
 		}
 	},
 	"files": [
-		"dist/*.js",
-		"dist/*.d.ts",
+		"dist",
 		"migrations"
 	],
 	"sideEffects": [
-		"./src/client/**"
+		"*.css"
 	],
 	"publishConfig": {
 		"access": "public"
 	},
 	"scripts": {
-		"build": "pnpm run build:client && tsc -p tsconfig.build.json && node scripts/embed-client.ts",
-		"build:client": "vite build",
+		"build": "rm -rf dist && tsc -p tsconfig.build.json && tsc -p tsconfig.client.build.json && cp src/client/admin.css dist/client/admin.css",
 		"check": "tsc --noEmit && tsc --noEmit -p tsconfig.client.json",
 		"test": "vitest run",
 		"format": "prettier --write .",
 		"prepack": "pnpm run build"
 	},
 	"peerDependencies": {
-		"hono": "^4.13.0"
+		"@base-ui/react": "^1.9.0",
+		"@portabletext/editor": "^8.2.15",
+		"hono": "^4.13.0",
+		"react": "^19.3.1",
+		"react-dom": "^19.3.1"
 	},
 	"dependencies": {
 		"@portabletext/to-html": "^6.0.0",
@@ -52,7 +67,6 @@
 		"react": "^19.3.1",
 		"react-dom": "^19.3.1",
 		"typescript": "^7.0.2",
-		"vite": "^8.0.0",
 		"vitest": "^5.0.5"
 	},
 	"engines": {
