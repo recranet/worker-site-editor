@@ -1,0 +1,11 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"lib": ["es2024", "dom", "dom.iterable"],
+		"types": [],
+		"jsxImportSource": "react",
+		"module": "preserve",
+		"moduleResolution": "bundler"
+	},
+	"include": ["src/client", "src/admin-data.ts", "src/fields.ts"]
+}

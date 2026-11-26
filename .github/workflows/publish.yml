@@ -1,0 +1,43 @@
+# A CalVer tag (YYYYMMDD.0.N) whose name matches package.json publishes the
+# package to npm, public, through trusted publishing: the package trusts this
+# workflow on npmjs.com (Settings, Trusted publishing), so there is no token.
+name: publish
+
+on:
+  push:
+    tags:
+      - "[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9].0.[0-9]*"
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+      - name: Tag matches package.json
+        run: test "$(jq -r .version package.json)" = "$GITHUB_REF_NAME"
+      - run: pnpm install --frozen-lockfile
+      # prepack builds.
+      - run: npm publish --access public
+      - name: GitHub release from the tag's message
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > notes.md
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md

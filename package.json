@@ -1,0 +1,62 @@
+{
+	"name": "@recranet/worker-site-editor",
+	"version": "0.0.0",
+	"description": "Text editing for Recranet's customer sites on Cloudflare Workers: sign-in through the console, the Portable Text editor at /admin/, texts in D1 and images in R2.",
+	"license": "UNLICENSED",
+	"type": "module",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/recranet/worker-site-editor.git"
+	},
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist/*.js",
+		"dist/*.d.ts",
+		"migrations"
+	],
+	"sideEffects": [
+		"./src/client/**"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "pnpm run build:client && tsc -p tsconfig.build.json && node scripts/embed-client.ts",
+		"build:client": "vite build",
+		"check": "tsc --noEmit && tsc --noEmit -p tsconfig.client.json",
+		"test": "vitest run",
+		"format": "prettier --write .",
+		"prepack": "pnpm run build"
+	},
+	"peerDependencies": {
+		"hono": "^4.13.0"
+	},
+	"dependencies": {
+		"@portabletext/to-html": "^6.0.0",
+		"better-auth": "^1.7.27"
+	},
+	"devDependencies": {
+		"@base-ui/react": "^1.9.0",
+		"@cloudflare/workers-types": "^5.20261125.1",
+		"@portabletext/editor": "^8.2.15",
+		"@types/node": "^26.6.11",
+		"@types/react": "^19.3.0",
+		"@types/react-dom": "^19.3.0",
+		"hono": "^4.13.21",
+		"prettier": "^3.6.2",
+		"react": "^19.3.1",
+		"react-dom": "^19.3.1",
+		"typescript": "^7.0.2",
+		"vite": "^8.0.0",
+		"vitest": "^5.0.5"
+	},
+	"engines": {
+		"node": "^26.12.0"
+	},
+	"packageManager": "pnpm@12.18.0"
+}
