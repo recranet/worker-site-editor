@@ -451,11 +451,7 @@ function FormatToolbar() {
 				{button("↷", "Opnieuw", () => send({ type: "history.redo" }))}
 			</Toolbar.Group>
 			<span className="spacer"></span>
-			{data.saved && (
-				<span role="status" className="saved">
-					Opgeslagen
-				</span>
-			)}
+			<Saved />
 			<Toolbar.Button type="submit" className="button primary">
 				Opslaan
 			</Toolbar.Button>
@@ -1332,6 +1328,15 @@ function FieldsForm(props: {
 				hidden.current!.value = JSON.stringify(set);
 			}}
 		>
+			{/* Save sits in the sticky bar, as on the text screen, so a long form needn't be scrolled. */}
+			<div className="toolbar" role="toolbar" aria-label="Opslaan">
+				<Problem text={problem} />
+				<span className="spacer"></span>
+				<Saved />
+				<button type="submit" className="button primary">
+					Opslaan
+				</button>
+			</div>
 			{props.item && (
 				<div className="fields">
 					<label className="field">
@@ -1360,13 +1365,6 @@ function FieldsForm(props: {
 				onChange={(next) => setValue((current) => ({ ...current, ...next }))}
 			/>
 			<input type="hidden" name="value" ref={hidden} />
-			<Problem text={problem} />
-			<div className="row">
-				<button type="submit" className="button primary">
-					Opslaan
-				</button>
-				<Saved />
-			</div>
 		</form>
 	);
 }
@@ -1391,7 +1389,7 @@ function CollectionList(props: { screen: CollectionScreen }) {
 	return (
 		<>
 			<h1 className="screen-title">{screen.title}</h1>
-			<form method="post" action={`${screen.href}nieuw`} className="row new-item">
+			<form method="post" action={`${screen.href}nieuw`} className="toolbar new-item">
 				<Input
 					className="input"
 					name="title"
