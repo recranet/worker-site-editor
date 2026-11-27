@@ -148,20 +148,6 @@ export function createRoutes(config: RoutesConfig) {
 		return c.redirect(first.href, 303);
 	});
 
-	// The admin's paths were Dutch until 20261127.0.6; bookmarks to a screen
-	// still work. The POSTs only came from the admin itself and just moved.
-	for (const [from, to] of [
-		["teksten", "texts"],
-		["velden", "fields"],
-		["collecties", "collections"],
-	]) {
-		app.get(`/admin/${from}/*`, (c) => {
-			const rest = c.req.path.slice(`/admin/${from}/`.length);
-			const path = `/admin/${to}/${from === "collecties" ? rest.replace(/^([^/]+\/[^/]+\/)teksten\//, "$1texts/") : rest}`;
-			return c.redirect(path, 301);
-		});
-	}
-
 	// Everything below needs a session.
 	for (const path of [
 		"/admin/texts/*",
@@ -416,7 +402,7 @@ export function createRoutes(config: RoutesConfig) {
 		const found = await findItem(c.req.param("collection"), c.req.param("id"));
 		if (!found) return c.notFound();
 		const form = await c.req.formData();
-		await moveItem(db, found.name, found.item.id, form.get("richting") === "omhoog" ? -1 : 1);
+		await moveItem(db, found.name, found.item.id, form.get("direction") === "up" ? -1 : 1);
 		return c.redirect(collectionHref(found.name), 303);
 	});
 
@@ -424,7 +410,7 @@ export function createRoutes(config: RoutesConfig) {
 	app.post("/admin/collections/:collection/:id/visibility", async (c) => {
 		const found = await findItem(c.req.param("collection"), c.req.param("id"));
 		if (!found) return c.notFound();
-		const show = (await c.req.formData()).get("zichtbaar") === "1";
+		const show = (await c.req.formData()).get("visible") === "1";
 		if (show && !hasFields(found.item.fields, found.def.fields))
 			return refuse(c, `Vul eerst de verplichte velden in: ${found.item.title}.`);
 		await setPublished(db, found.name, found.item.id, show, c.var.email);

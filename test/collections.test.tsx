@@ -431,21 +431,21 @@ describe("admin", () => {
 	it("moves, shows, hides and deletes items", async () => {
 		const { s, post } = await admin();
 		const order = async () => (await listItems(s.db, "projects")).map((i) => i.id);
-		await post("/admin/collections/projects/kantoor/move", { richting: "omhoog" });
+		await post("/admin/collections/projects/kantoor/move", { direction: "up" });
 		expect(await order()).toEqual(["kantoor", "villa-aan-zee", "schuur"]);
-		await post("/admin/collections/projects/kantoor/move", { richting: "omlaag" });
+		await post("/admin/collections/projects/kantoor/move", { direction: "down" });
 		expect(await order()).toEqual(["villa-aan-zee", "kantoor", "schuur"]);
 
-		await post("/admin/collections/projects/kantoor/visibility", { zichtbaar: "0" });
+		await post("/admin/collections/projects/kantoor/visibility", { visible: "0" });
 		expect(await s.editor.item("projects", "kantoor")).toBeUndefined();
-		await post("/admin/collections/projects/kantoor/visibility", { zichtbaar: "1" });
+		await post("/admin/collections/projects/kantoor/visibility", { visible: "1" });
 		expect(await s.editor.item("projects", "kantoor")).toBeDefined();
 
 		// A new item can't be shown before its required fields are filled in.
 		await post("/admin/collections/projects/new", { title: "Leeg" });
 		const [empty] = await listItems(s.db, "projects");
 		const show = await post(`/admin/collections/projects/${empty.id}/visibility`, {
-			zichtbaar: "1",
+			visible: "1",
 		});
 		expect(show.status).toBe(400);
 
@@ -464,23 +464,5 @@ describe("admin", () => {
 		expect(anonymous.headers.get("location")).toBe("/admin/");
 		const anonymousFields = await s.request("/admin/fields/contact/");
 		expect(anonymousFields.headers.get("location")).toBe("/admin/");
-	});
-
-	it("sends the old Dutch screen paths on to the English ones", async () => {
-		const { s } = await admin();
-		for (const [from, to] of [
-			["/admin/teksten/home/body/", "/admin/texts/home/body/"],
-			["/admin/velden/contact/", "/admin/fields/contact/"],
-			["/admin/collecties/projects/", "/admin/collections/projects/"],
-			["/admin/collecties/projects/kantoor/", "/admin/collections/projects/kantoor/"],
-			[
-				"/admin/collecties/projects/kantoor/teksten/photos/",
-				"/admin/collections/projects/kantoor/texts/photos/",
-			],
-		]) {
-			const res = await s.request(from);
-			expect(res.status).toBe(301);
-			expect(res.headers.get("location")).toBe(to);
-		}
 	});
 });

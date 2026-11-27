@@ -7,7 +7,7 @@ Text editing for Recranet's customer sites on Cloudflare Workers (sites from [re
 The core is small:
 
 - Sign-in through the console's OpenID provider (`auth.recranet.dev`, `auth.elloro.dev`) with Better Auth: a mail link for the customer, the console for staff. The site keeps no passwords or users; the session is an encrypted cookie.
-- `/admin/`: the Portable Text editor, one screen per editable text, in Dutch. Its paths are English: `/admin/texts/<page>/<name>/`, `/admin/fields/<page>/`, `/admin/collections/<collection>/`; the old Dutch ones (`/admin/teksten/…`) redirect. Built-in: bold, italic, underline, strike-through, H2, H3, quote, lists, link, and with an R2 bucket one image and a gallery.
+- `/admin/`: the Portable Text editor, one screen per editable text, in Dutch. Its paths are English: `/admin/texts/<page>/<name>/`, `/admin/fields/<page>/`, `/admin/collections/<collection>/`. Built-in: bold, italic, underline, strike-through, H2, H3, quote, lists, link, and with an R2 bucket one image and a gallery.
 - Texts in the site's D1, images in its R2 bucket (optional), scaled by Cloudflare Images (optional).
 - Page fields (a heading, a banner, a list of slides) and collections (projects, news): items the customer adds, orders, hides and removes.
 - Rendering of the texts for the pages.

@@ -1420,11 +1420,11 @@ function CollectionList(props: { screen: CollectionScreen }) {
 									Bekijk
 								</a>
 							)}
-							{i > 0 && post(`${item.href}move`, { richting: "omhoog" }, "↑")}
-							{i < screen.items.length - 1 && post(`${item.href}move`, { richting: "omlaag" }, "↓")}
+							{i > 0 && post(`${item.href}move`, { direction: "up" }, "↑")}
+							{i < screen.items.length - 1 && post(`${item.href}move`, { direction: "down" }, "↓")}
 							{post(
 								`${item.href}visibility`,
-								{ zichtbaar: item.published ? "0" : "1" },
+								{ visible: item.published ? "0" : "1" },
 								item.published ? "Verbergen" : "Tonen",
 							)}
 							<button type="button" className="button small" onClick={() => setRemoving(item)}>
