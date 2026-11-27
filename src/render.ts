@@ -97,16 +97,17 @@ export function createRenderer(schema: Schema, ctx: RenderContext) {
 		types: {
 			image: ({ value }: { value: ImageValue }) =>
 				isMediaImage(value)
-					? `<figure class="my-6">${ctx.image(value, { sizes: "(min-width: 48rem) 42rem, 100vw", class: "h-auto max-w-full rounded-md" })}</figure>`
+					? `<figure class="editor-image">${ctx.image(value, { sizes: "(min-width: 48rem) 42rem, 100vw" })}</figure>`
 					: "",
-			// A grid of square crops, each a link to the large image. The site's
-			// lightbox script opens [data-gallery] links.
+			// Links to the large images, for the site to lay out as a grid (.gallery)
+			// and its lightbox script to open ([data-gallery]). Plain markup: the
+			// site styles .editor-image and .gallery.
 			gallery: ({ value }: { value: GalleryBlock }) =>
-				`<div class="gallery my-6 grid grid-cols-2 gap-3 md:grid-cols-3">${value.images
+				`<div class="gallery">${value.images
 					.filter(isMediaImage)
 					.map(
 						(image) =>
-							`<a href="${attr(image.src)}" class="block overflow-hidden rounded-md" data-gallery>${ctx.image(image, { sizes: "(min-width: 48rem) 33vw, 50vw", class: "aspect-square size-full object-cover transition-transform hover:scale-105" })}</a>`,
+							`<a href="${attr(image.src)}" data-gallery>${ctx.image(image, { sizes: "(min-width: 48rem) 33vw, 50vw" })}</a>`,
 					)
 					.join("")}</div>`,
 			...Object.fromEntries(

@@ -231,7 +231,7 @@ describe("site API", () => {
 		const villa = await s.editor.item("projects", "villa-aan-zee");
 		expect(villa?.fields.place).toBe("Ouddorp");
 		expect(String(villa?.text("body"))).toBe("<p>Een villa.</p><p>In de duinen.</p>");
-		expect(String(villa?.text.page("body"))).toContain('<div class="article max-w-3xl">');
+		expect(String(villa?.text.page("body"))).toBe("<p>Een villa.</p><p>In de duinen.</p>");
 		expect(villa?.text.value("photos")).toEqual([]);
 		expect(await s.editor.item("projects", "schuur")).toBeUndefined();
 		expect(await s.editor.item("projects", "bestaat-niet")).toBeUndefined();

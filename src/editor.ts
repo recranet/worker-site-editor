@@ -74,12 +74,10 @@ export type EditorOptions<
 	// (README, "The admin bundle"). Default /admin/admin.js and /admin/style.css,
 	// the starter's build output; in `cf dev` the entry's source path.
 	admin?: { script: string; style?: string };
-	// Wraps the paragraphs between section blocks in texts().page().
+	// Wraps the paragraphs between section blocks in texts().page(). Default
+	// none: the HTML as it is.
 	column?: (html: string) => string;
 };
-
-const defaultColumn = (html: string) =>
-	`<section><div class="container"><div class="article max-w-3xl">${html}</div></div></section>`;
 
 // The editor for one site. Call it once, at module scope, with the bindings
 // from `import { env } from "cloudflare:workers"`; the package declares none.
@@ -90,7 +88,7 @@ export function createEditor<
 	const schema = createSchema(options.blocks ?? [], options.textStyles ?? {});
 	const ctx = renderContext(options.images !== undefined);
 	const renderer = createRenderer(schema, ctx);
-	const column = options.column ?? defaultColumn;
+	const column = options.column ?? ((html: string) => html);
 	const auth = complete(options.auth);
 	const db = options.db;
 	const editing = db !== undefined && auth !== undefined;

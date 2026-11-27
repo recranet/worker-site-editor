@@ -127,6 +127,20 @@ describe("images", () => {
 		expect(scaled).not.toContain("?w=2560");
 	});
 
+	it("renders plain markup for the site to style", () => {
+		const { editor } = site();
+		expect(editor.render([upload]).toString()).toMatch(
+			/^<figure class="editor-image"><img [^>]*><\/figure>$/,
+		);
+		const gallery = editor
+			.render([{ _type: "gallery", _key: "g", images: [{ ...upload, _key: "a" }] }])
+			.toString();
+		expect(gallery).toMatch(
+			/^<div class="gallery"><a href="\/media\/[^"]+" data-gallery><img [^>]*><\/a><\/div>$/,
+		);
+		expect(gallery).not.toMatch(/<img [^>]*class=/);
+	});
+
 	it("never renders an image from elsewhere", () => {
 		const html = site()
 			.editor.render([{ ...upload, src: "https://evil.test/x.jpg" }])

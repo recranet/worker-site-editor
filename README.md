@@ -109,7 +109,7 @@ app.route("/", editor.routes);
 ```
 
 - `text("body")` renders the text as HTML.
-- `text.page("body")` renders it as the page's sections: blocks with `section: true` full width, everything between them in the text column (`column` option, default the starter's `<section><div class="container"><div class="article max-w-3xl">…`).
+- `text.page("body")` renders it as the page's sections: blocks with `section: true` full width, everything between them in the text column (`column` option, a function that wraps their HTML; default no wrapper).
 - `editor.render(value)` renders any Portable Text with the site's styles and blocks.
 
 ### The admin bundle (browser)
@@ -154,15 +154,22 @@ admin: import.meta.env.DEV ? { script: "/src/admin.ts" } : undefined,
 
 It also loads the site's stylesheet (`stylesheet` option, default `/style.css`) so texts look as on the page.
 
+### Images and galleries
+
+The built-in image and gallery render plain markup; the site styles them in its own CSS:
+
+- an image: `<figure class="editor-image"><img …></figure>`
+- a gallery: `<div class="gallery">` with an `<a href="…" data-gallery><img …></a>` per image
+
+The starter's `src/styles/app.css` has the rules (a margin, rounded corners, a grid of square crops that zoom on hover), and its `public/gallery.js` opens `[data-gallery]` links in a lightbox.
+
 ### Tailwind
 
-The built-in image and gallery and the extension blocks use Tailwind classes; the extension blocks also use the starter's own classes from its `app.css` (`container`, `btn`, `heading-3`, `p-flow`, `mb-section-half`, `hero-shade`, `animate-marquee`, …). Let the site's Tailwind see the package, in `src/styles/app.css`:
+Only the extension blocks need this. They use Tailwind classes and the starter's own classes from its `app.css` (`container`, `btn`, `heading-3`, `p-flow`, `mb-section-half`, `hero-shade`, `animate-marquee`, …). Let the site's Tailwind see the package, in `src/styles/app.css`:
 
 ```css
 @source "../../node_modules/@recranet/worker-site-editor/dist";
 ```
-
-A gallery renders its images as `<a data-gallery>` links; the starter's `public/gallery.js` opens them in a lightbox.
 
 ### Migrations
 
