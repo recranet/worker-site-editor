@@ -362,6 +362,7 @@ export const openingHours = defineBlock({
 ```
 
 - Field kinds: `text`, `textarea`, `url`, `select` (with `options`), `choices` (several of `options`, a list of keys), `image`, and `items` (a list, each item with its own fields, no lists in lists). `required` makes the editor ask for it and the save refuse without it.
+- An `image` needs an alt text before it saves: screen readers read it out, and WCAG asks a text alternative for every image that carries content. An image that only decorates, such as a banner or background photo, takes `decorative: true` (`{ name: "banner", label: "Banner", kind: "image", decorative: true }`): the editor asks no alt text, stores `alt: ""` and `ctx.image` renders `alt=""`, so screen readers skip it. This works the same in page fields, collection items, blocks and `items`.
 - The fields are the stored shape and the server's check on every save: only known fields, safe URLs, images from `/media/` or the site's own files. Whatever the block's editor UI does, the saved value must fit them.
 - `value` is typed from the fields. Text is plain text: render it through JSX, which escapes it.
 - `render(value, ctx)` gets `ctx.image(image, { sizes, class, eager })`, an `<img>` string with a srcset when Images scales uploads, and `ctx.srcset(src, width)`. Render must be synchronous. A render that throws leaves the block out and logs.

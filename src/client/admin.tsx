@@ -36,6 +36,16 @@ import { createRoot } from "react-dom/client";
 import type { AdminData } from "../admin-data.ts";
 import type { Field, ImageValue, ItemField } from "../fields.ts";
 import type { BlockEditor, BlockFields } from "./block-editor.ts";
+import {
+	asImage,
+	asList,
+	asRows,
+	asText,
+	missing,
+	type Image,
+	type PartValue,
+	type Row,
+} from "./missing.ts";
 
 // The server puts the screen's data in the page (routes.tsx), with the site's
 // blocks (their fields) and text styles; the site's bundle passes the blocks'
@@ -120,8 +130,6 @@ const buildSchema = () =>
 		],
 	});
 
-type Image = { _key?: string; src: string; alt: string; width?: number; height?: number };
-
 // Small previews in the editor: /media/ scales them when IMAGES is on, and
 // serves the original otherwise.
 const preview = (src?: string) => (src ? `${src}?w=480` : undefined);
@@ -135,23 +143,13 @@ function editGallery(path: BlockPath, images: Image[]) {
 	galleryEdits.dispatchEvent(new CustomEvent<GalleryEdit>("edit", { detail: { path, images } }));
 }
 
-// A part's stored fields (parts.ts), and the edit that opens its form: a new
-// part has no path yet.
-type PartValue = { _type?: string; _key?: string; [field: string]: unknown };
-type Row = { _key: string; [field: string]: unknown };
+// The edit that opens a part's form: a new part has no path yet.
 type PartEdit = { type: string; path?: BlockPath; value: PartValue };
 const partEdits = new EventTarget();
 function editPart(edit: PartEdit) {
 	partEdits.dispatchEvent(new CustomEvent<PartEdit>("edit", { detail: edit }));
 }
 
-const asText = (v: unknown) => (typeof v === "string" ? v : "");
-const asRows = (v: unknown) => (Array.isArray(v) ? (v as Row[]) : []);
-const asList = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
-const asImage = (v: unknown) =>
-	typeof v === "object" && v !== null && typeof (v as Image).src === "string"
-		? (v as Image)
-		: undefined;
 const newKey = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 // The card's line: the first text field that has a value, else the first item's.
@@ -872,29 +870,6 @@ function PartPopover() {
 	);
 }
 
-// What's missing before a part or item can be applied, or "" when it's complete.
-function missing(value: PartValue, fields: readonly Field[]): string {
-	for (const f of fields) {
-		const v = value[f.name];
-		if (f.kind === "items") {
-			for (const row of asRows(v)) {
-				const problem = missing(row, f.fields);
-				if (problem) return `${f.item}: ${problem}`;
-			}
-		} else if (f.kind === "image") {
-			const image = asImage(v);
-			if (!image && f.required) return `Kies een afbeelding bij ${f.label}.`;
-			if (image && image.alt.trim() === "")
-				return `Beschrijf de afbeelding bij ${f.label} voor wie hem niet ziet.`;
-		} else if (f.kind === "choices") {
-			if (f.required && asList(v).length === 0) return `Kies minstens een ${f.label}.`;
-		} else if ("required" in f && f.required && asText(v).trim() === "") {
-			return `Vul ${f.label} in.`;
-		}
-	}
-	return "";
-}
-
 // The form for one part, built from its fields (parts.ts). Toepassen writes
 // the fields into the block (or inserts a new one); Save stores it as usual.
 function PartEditor() {
@@ -1095,7 +1070,14 @@ function FieldInput(props: { field: ItemField; value: unknown; onChange: (v: unk
 	const { field } = props;
 	const label = "required" in field && field.required ? `${field.label} *` : field.label;
 	if (field.kind === "image")
-		return <ImageInput label={label} value={asImage(props.value)} onChange={props.onChange} />;
+		return (
+			<ImageInput
+				label={label}
+				decorative={field.decorative === true}
+				value={asImage(props.value)}
+				onChange={props.onChange}
+			/>
+		);
 	if (field.kind === "choices") {
 		const chosen = asList(props.value);
 		return (
@@ -1156,19 +1138,25 @@ function FieldInput(props: { field: ItemField; value: unknown; onChange: (v: unk
 	);
 }
 
-// An image field: its preview and alt text, a new upload, or none.
+// An image field: its preview and alt text, a new upload, or none. A
+// decorative one has no alt text: one saved before it turned decorative goes.
 function ImageInput(props: {
 	label: string;
+	decorative: boolean;
 	value: Image | undefined;
 	onChange: (v: Image | undefined) => void;
 }) {
 	const [busy, setBusy] = useState(false);
 	const [problem, setProblem] = useState("");
+	const stale = props.decorative && props.value !== undefined && props.value.alt !== "";
+	useEffect(() => {
+		if (stale) props.onChange({ ...props.value!, alt: "" });
+	}, [stale]);
 	const choose = async (file: File) => {
 		setBusy(true);
 		setProblem("");
 		try {
-			props.onChange(await upload(file, props.value?.alt ?? ""));
+			props.onChange(await upload(file, props.decorative ? "" : (props.value?.alt ?? "")));
 		} catch (e) {
 			setProblem((e as Error).message || "Uploaden is niet gelukt.");
 		} finally {
@@ -1181,13 +1169,17 @@ function ImageInput(props: {
 			{props.value && (
 				<div className="image-row">
 					<img src={preview(props.value.src)} alt="" />
-					<Input
-						className="input"
-						placeholder="Wat staat erop?"
-						aria-label="Alt-tekst"
-						value={props.value.alt}
-						onValueChange={(alt) => props.onChange({ ...props.value!, alt })}
-					/>
+					{props.decorative ? (
+						<span className="spacer"></span>
+					) : (
+						<Input
+							className="input"
+							placeholder="Wat staat erop?"
+							aria-label="Alt-tekst"
+							value={props.value.alt}
+							onValueChange={(alt) => props.onChange({ ...props.value!, alt })}
+						/>
+					)}
 					<button
 						type="button"
 						className="button small"

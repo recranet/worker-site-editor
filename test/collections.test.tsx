@@ -330,6 +330,13 @@ describe("admin", () => {
 		expect(save.headers.get("location")).toBe("/admin/fields/contact/?saved");
 		expect((await s.editor.texts("contact")).fields).toEqual(value);
 
+		// The banner is decorative: it saves without an alt text.
+		const banner = { heading: "Bel ons", banner: { ...image, alt: "" } };
+		expect((await post("/admin/fields/contact/", { value: JSON.stringify(banner) })).status).toBe(
+			303,
+		);
+		expect((await s.editor.texts("contact")).fields).toEqual(banner);
+
 		// A required field missing, or one the page doesn't have: refused.
 		expect((await post("/admin/fields/contact/", { value: "{}" })).status).toBe(400);
 		const extra = JSON.stringify({ heading: "x", colour: "red" });
@@ -400,6 +407,9 @@ describe("admin", () => {
 			(await refused({ value: JSON.stringify({ place: "Goes", categories: ["x"] }) })).status,
 		).toBe(400);
 		expect((await refused({ value: JSON.stringify({}) })).status).toBe(400);
+		// The project's image isn't decorative: no alt text, no save.
+		const noAlt = { place: "Goes", image: { ...image, alt: " " } };
+		expect((await refused({ value: JSON.stringify(noAlt) })).status).toBe(400);
 	});
 
 	it("edits an item's texts under its id, so a new slug keeps them", async () => {

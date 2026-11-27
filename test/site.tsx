@@ -75,7 +75,7 @@ export const pages = {
 		texts: { body: { label: "Pagina", default: "Bel ons." } },
 		fields: [
 			{ name: "heading", label: "Kop", kind: "text", required: true },
-			{ name: "banner", label: "Banner", kind: "image" },
+			{ name: "banner", label: "Banner", kind: "image", decorative: true },
 			{
 				name: "slides",
 				label: "Dia's",
