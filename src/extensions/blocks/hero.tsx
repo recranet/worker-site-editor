@@ -1,5 +1,6 @@
+import { raw } from "hono/html";
 import { defineBlock } from "../../blocks.ts";
-import { Buttons, buttonsField, Image, introField, paragraphs } from "../ui.tsx";
+import { Buttons, buttonsField, introField, paragraphs } from "../ui.tsx";
 
 // The page's opening. `cover`: white text over the darkened image; `split`:
 // text beside it. Without an image it is plain text. One image, no slider.
@@ -45,13 +46,13 @@ export const hero = defineBlock({
 					<div class="container">
 						<div class="grid items-center gap-6 lg:grid-cols-2 lg:gap-12">
 							{body(false)}
-							<Image
-								image={value.image}
-								ctx={ctx}
-								class="h-auto w-full rounded-md"
-								sizes="(min-width: 62rem) 50vw, 100vw"
-								eager
-							/>
+							{raw(
+								ctx.image(value.image, {
+									class: "h-auto w-full rounded-md",
+									sizes: "(min-width: 62rem) 50vw, 100vw",
+									eager: true,
+								}),
+							)}
 						</div>
 					</div>
 				</section>
@@ -60,7 +61,7 @@ export const hero = defineBlock({
 		return (
 			<section class="relative flex min-h-[max(60vh,30rem)] items-center overflow-hidden py-0! text-white">
 				<div class="absolute inset-0">
-					<Image image={value.image} ctx={ctx} class="size-full object-cover" eager />
+					{raw(ctx.image(value.image, { class: "size-full object-cover", eager: true }))}
 					<div class="hero-shade pointer-events-none absolute inset-0"></div>
 				</div>
 				<div class="container">{body(true)}</div>

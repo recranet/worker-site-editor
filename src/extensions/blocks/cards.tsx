@@ -1,7 +1,8 @@
+import { raw } from "hono/html";
 import { uriLooksSafe } from "@portabletext/to-html";
 import { defineBlock, type RenderContext } from "../../blocks.ts";
 import type { ImageValue } from "../../fields.ts";
-import { Image, introField, paragraphs, SectionHeader, titleField } from "../ui.tsx";
+import { introField, paragraphs, SectionHeader, titleField } from "../ui.tsx";
 
 type Card = {
 	title: string;
@@ -99,12 +100,7 @@ function CardView({ card, ctx }: { card: Card; ctx: RenderContext }) {
 			<div class={`${shell} min-h-80 bg-dark text-white`}>
 				{link}
 				<div class="absolute inset-0 overflow-hidden">
-					<Image
-						image={card.image}
-						ctx={ctx}
-						class={`size-full object-cover ${zoom}`}
-						sizes={sizes}
-					/>
+					{raw(ctx.image(card.image, { class: `size-full object-cover ${zoom}`, sizes }))}
 				</div>
 				<div class="absolute inset-0 flex flex-col justify-end overflow-hidden p-flow">
 					<div class="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-b from-transparent to-black/75"></div>
@@ -119,12 +115,7 @@ function CardView({ card, ctx }: { card: Card; ctx: RenderContext }) {
 			<div class={`${shell} border border-black/15 bg-white`}>
 				{link}
 				<div class="overflow-hidden">
-					<Image
-						image={card.image}
-						ctx={ctx}
-						class={`aspect-[4/3] w-full object-cover ${zoom}`}
-						sizes={sizes}
-					/>
+					{raw(ctx.image(card.image, { class: `aspect-[4/3] w-full object-cover ${zoom}`, sizes }))}
 				</div>
 				<div class="p-flow">
 					<h3 class="mb-0 heading-4">{card.title}</h3>

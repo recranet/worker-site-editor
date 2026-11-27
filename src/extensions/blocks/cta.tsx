@@ -1,5 +1,6 @@
+import { raw } from "hono/html";
 import { defineBlock } from "../../blocks.ts";
-import { Buttons, buttonsField, Image, paragraphs, titleField } from "../ui.tsx";
+import { Buttons, buttonsField, paragraphs, titleField } from "../ui.tsx";
 
 // A call to action on the dark primary colour, optionally over a darkened
 // background image.
@@ -17,7 +18,7 @@ export const cta = defineBlock({
 		<section class="relative bg-primary-dark! text-white">
 			{value.image && (
 				<div class="absolute inset-0">
-					<Image image={value.image} ctx={ctx} class="size-full object-cover" />
+					{raw(ctx.image(value.image, { class: "size-full object-cover" }))}
 					<div class="pointer-events-none absolute inset-0 bg-black/50"></div>
 				</div>
 			)}

@@ -1,7 +1,5 @@
 import { uriLooksSafe } from "@portabletext/to-html";
 import type { Child } from "hono/jsx";
-import type { RenderContext } from "../blocks.ts";
-import type { ImageValue } from "../fields.ts";
 
 // The pieces the extension blocks share. They use the starter's classes:
 // Tailwind utilities (the site's Tailwind scans the package, README) and the
@@ -10,32 +8,6 @@ import type { ImageValue } from "../fields.ts";
 // copies the block and changes the markup.
 
 export type Button = { label: string; href: string; style?: "default" | "outline" };
-
-// An image with a srcset when the site's Images binding scales uploads.
-export function Image(props: {
-	image: ImageValue;
-	ctx: RenderContext;
-	class?: string;
-	sizes?: string;
-	eager?: boolean;
-}) {
-	const { image, ctx } = props;
-	const set = ctx.srcset(image.src, image.width);
-	return (
-		<img
-			src={image.src}
-			alt={image.alt}
-			width={image.width}
-			height={image.height}
-			srcset={set}
-			sizes={set ? (props.sizes ?? "100vw") : undefined}
-			loading={props.eager ? "eager" : "lazy"}
-			fetchpriority={props.eager ? "high" : undefined}
-			decoding="async"
-			class={props.class}
-		/>
-	);
-}
 
 // A row of buttons. `on="dark"` gives the white variants for coloured panels;
 // `on="image"` keeps the filled button and makes the outline one white.

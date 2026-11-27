@@ -1,5 +1,6 @@
+import { raw } from "hono/html";
 import { defineBlock } from "../../blocks.ts";
-import { Check, Image, introField, paragraphs, SectionHeader, titleField } from "../ui.tsx";
+import { Check, introField, paragraphs, SectionHeader, titleField } from "../ui.tsx";
 
 // Selling points: `grid` three columns with a round icon above the text,
 // `list` one column with the icon beside it. Without an image, a check.
@@ -43,12 +44,7 @@ export const features = defineBlock({
 							<div class={list ? "flex items-start gap-4" : "flex flex-col gap-4"}>
 								<div class="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-light text-primary">
 									{item.image ? (
-										<Image
-											image={item.image}
-											ctx={ctx}
-											class="size-full object-cover"
-											sizes="5rem"
-										/>
+										raw(ctx.image(item.image, { class: "size-full object-cover", sizes: "5rem" }))
 									) : (
 										<Check class="size-6" />
 									)}

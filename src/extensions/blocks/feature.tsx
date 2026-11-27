@@ -1,5 +1,6 @@
+import { raw } from "hono/html";
 import { defineBlock } from "../../blocks.ts";
-import { Buttons, buttonsField, Image, paragraphs, SectionHeader, titleField } from "../ui.tsx";
+import { Buttons, buttonsField, paragraphs, SectionHeader, titleField } from "../ui.tsx";
 
 // Text and buttons beside an image, the image left or right from lg up.
 export const feature = defineBlock({
@@ -27,12 +28,12 @@ export const feature = defineBlock({
 				<div class="container">
 					<div class="grid items-center gap-6 lg:grid-cols-12">
 						<figure class={right ? "lg:col-span-5 lg:col-start-8 lg:row-start-1" : "lg:col-span-5"}>
-							<Image
-								image={value.image}
-								ctx={ctx}
-								class="h-auto max-w-full rounded-md"
-								sizes="(min-width: 62rem) 42vw, 100vw"
-							/>
+							{raw(
+								ctx.image(value.image, {
+									class: "h-auto max-w-full rounded-md",
+									sizes: "(min-width: 62rem) 42vw, 100vw",
+								}),
+							)}
 							{value.caption && (
 								<figcaption class="mt-2 text-sm text-muted">{value.caption}</figcaption>
 							)}
