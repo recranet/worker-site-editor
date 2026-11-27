@@ -1,12 +1,13 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 // Just enough of D1 for the package (prepare, bind, all, first, run) on an
-// in-memory SQLite with the package's migrations.
+// in-memory SQLite with the package's migrations, in order.
 export function testD1(): D1Database {
 	const sqlite = new DatabaseSync(":memory:");
-	sqlite.exec(readFileSync(join(import.meta.dirname, "../migrations/0001_block.sql"), "utf8"));
+	const dir = join(import.meta.dirname, "../migrations");
+	for (const file of readdirSync(dir).sort()) sqlite.exec(readFileSync(join(dir, file), "utf8"));
 	const prepare = (sql: string) => {
 		let params: unknown[] = [];
 		const stmt = {
@@ -27,7 +28,12 @@ export function testD1(): D1Database {
 		};
 		return stmt;
 	};
-	return { prepare } as unknown as D1Database;
+	// Several statements at once, as a seed file holds.
+	const exec = async (sql: string) => {
+		sqlite.exec(sql);
+		return { count: 0, duration: 0 };
+	};
+	return { prepare, exec } as unknown as D1Database;
 }
 
 // A small R2 stand-in: put and get by name.
