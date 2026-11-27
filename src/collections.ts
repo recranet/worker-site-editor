@@ -78,21 +78,27 @@ export type SeedItem<C extends CollectionDefinition = CollectionDefinition> = {
 	texts?: { [N in keyof C["texts"]]?: string | readonly Block[] };
 };
 
-const sql = (value: string) => `'${value.replaceAll("'", "''")}'`;
+// One statement of a seed: the shape of `cf d1 raw --batch`.
+export type SeedStatement = { sql: string; params: string[] };
 
-// SQL that adds a collection's existing items, in the given order, with their
-// texts. For a site's one-off import: write it to a file and run
-// `cf d1 execute <db> --file seed.sql`. Items whose id or slug is already
-// there are skipped (INSERT OR IGNORE), so the customer's later changes stay.
-// Throws on an item whose fields don't fit the collection's.
-export function collectionSeed<C extends CollectionDefinition>(
+const ITEM_INSERT =
+	"INSERT OR IGNORE INTO item (collection, id, slug, title, position, fields, published, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+const TEXT_INSERT =
+	"INSERT OR IGNORE INTO block (page, name, value, updated_at, updated_by) VALUES (?, ?, ?, ?, ?)";
+
+// The statements that add a collection's existing items, in the given order,
+// with their texts. For a site's one-off import: write them as JSON to a file
+// and run `cf d1 raw <db> --batch @seed.json`. Items whose id or slug is
+// already there are skipped (INSERT OR IGNORE), so the customer's later
+// changes stay. Throws on an item whose fields don't fit the collection's.
+export function collectionSeedBatch<C extends CollectionDefinition>(
 	name: string,
 	collection: C,
 	items: readonly SeedItem<C>[],
 	by = "seed",
-): string {
+): SeedStatement[] {
 	const now = new Date().toISOString();
-	const lines: string[] = [];
+	const statements: SeedStatement[] = [];
 	items.forEach((item, position) => {
 		const id = item.id ?? item.slug;
 		const fields = (item.fields ?? {}) as Record<string, unknown>;
@@ -101,33 +107,57 @@ export function collectionSeed<C extends CollectionDefinition>(
 		if (!item.title.trim()) throw new Error(`${name} "${item.slug}": no title`);
 		if (!hasFields(fields, collection.fields))
 			throw new Error(`${name} "${item.slug}": fields don't fit the collection's`);
-		lines.push(
-			`INSERT OR IGNORE INTO item (collection, id, slug, title, position, fields, published, updated_at, updated_by) VALUES (${[
-				sql(name),
-				sql(id),
-				sql(item.slug),
-				sql(item.title.trim()),
+		// Numbers as strings too: the batch takes strings, the INTEGER columns convert them.
+		statements.push({
+			sql: ITEM_INSERT,
+			params: [
+				name,
+				id,
+				item.slug,
+				item.title.trim(),
 				String(position),
-				sql(JSON.stringify(fields)),
+				JSON.stringify(fields),
 				item.published === false ? "0" : "1",
-				sql(now),
-				sql(by),
-			].join(", ")});`,
-		);
+				now,
+				by,
+			],
+		});
 		for (const [text, value] of Object.entries(item.texts ?? {})) {
 			if (!Object.hasOwn(collection.texts, text))
 				throw new Error(`${name} "${item.slug}": no text "${text}" in the collection`);
 			if (value === undefined) continue;
-			lines.push(
-				`INSERT OR IGNORE INTO block (page, name, value, updated_at, updated_by) VALUES (${[
-					sql(itemPage(name, id)),
-					sql(text),
-					sql(JSON.stringify(textToBlocks(value as string | readonly Block[]))),
-					sql(now),
-					sql(by),
-				].join(", ")});`,
-			);
+			statements.push({
+				sql: TEXT_INSERT,
+				params: [
+					itemPage(name, id),
+					text,
+					JSON.stringify(textToBlocks(value as string | readonly Block[])),
+					now,
+					by,
+				],
+			});
 		}
 	});
-	return lines.join("\n") + "\n";
+	return statements;
+}
+
+const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
+
+// The same as plain SQL, one statement per line, with the values inlined:
+// for `cf d1 raw <db> --sql` or a look at what the seed does.
+export function collectionSeed<C extends CollectionDefinition>(
+	name: string,
+	collection: C,
+	items: readonly SeedItem<C>[],
+	by = "seed",
+): string {
+	return collectionSeedBatch(name, collection, items, by)
+		.map(({ sql, params }) =>
+			sql
+				.split("?")
+				.map((part, i) => (i === 0 ? part : quote(params[i - 1]) + part))
+				.join(""),
+		)
+		.map((line) => `${line};\n`)
+		.join("");
 }

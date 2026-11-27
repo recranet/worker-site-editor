@@ -8,11 +8,13 @@ export {
 } from "./blocks.ts";
 export {
 	collectionSeed,
+	collectionSeedBatch,
 	defineCollection,
 	slugify,
 	type CollectionDefinition,
 	type Item,
 	type SeedItem,
+	type SeedStatement,
 } from "./collections.ts";
 export type { Field, FieldValues, ImageValue, ItemField } from "./fields.ts";
 export type { TextStyles } from "./text-styles.ts";

@@ -286,39 +286,40 @@ app.get("/projecten/:slug/", async (c) => {
 
 ### Seeding existing items
 
-A site that moves fixed pages to a collection imports them once. `collectionSeed` turns them into SQL; run it with `cf d1 execute`:
+A site that moves fixed pages to a collection imports them once. `collectionSeedBatch` turns them into the batch file `cf d1 raw` runs:
 
 ```ts
-// scripts/seed-projects.ts, run once: node scripts/seed-projects.ts > seed.sql
+// scripts/seed-projects.ts, run once: node scripts/seed-projects.ts > seed.json
 // (src/collections.ts imports nothing from cloudflare:workers, so Node runs it)
-import { collectionSeed } from "@recranet/worker-site-editor";
+import { collectionSeedBatch } from "@recranet/worker-site-editor";
 import { projects } from "../src/collections.ts";
 
-process.stdout.write(
-	collectionSeed("projects", projects, [
-		{
-			slug: "villa-aan-zee",
-			title: "Villa aan zee",
-			fields: {
-				place: "Ouddorp",
-				categories: ["living"],
-				image: { src: "/img/villa.jpg", alt: "De villa" },
-			},
-			texts: { body: "Een villa in de duinen.\n\nTweede alinea." }, // or Portable Text blocks
+const batch = collectionSeedBatch("projects", projects, [
+	{
+		slug: "villa-aan-zee",
+		title: "Villa aan zee",
+		fields: {
+			place: "Ouddorp",
+			categories: ["living"],
+			image: { src: "/img/villa.jpg", alt: "De villa" },
 		},
-		// ... in the order the site shows them
-	]),
-);
+		texts: { body: "Een villa in de duinen.\n\nTweede alinea." }, // or Portable Text blocks
+	},
+	// ... in the order the site shows them
+]);
+process.stdout.write(JSON.stringify(batch));
 ```
 
 ```bash
-pnpm exec cf d1 execute <database-id> --file seed.sql
+pnpm exec cf d1 raw <database-id> --batch @seed.json
 ```
+
+Add `--local` for `cf dev`. cf has no option to run a `.sql` file; `collectionSeed` (same arguments) gives the statements as plain SQL instead, one per line, to read or pass to `--sql`.
 
 - Each item's `id` defaults to its slug. Items whose id or slug is already there are skipped, so running it again keeps the customer's changes.
 - Fields are checked against the collection's; a misfit throws, naming the item. `published: false` seeds a hidden item.
 - Images can be the site's own files (`/img/...`) or uploads already in the bucket (`/media/<id>.<ext>`).
-- Delete the script, the SQL and the old fixed pages after the import: the items live in D1 from then on.
+- Delete the script, `seed.json` and the old fixed pages after the import: the items live in D1 from then on.
 
 ## Writing a block
 
