@@ -4,7 +4,7 @@ import { itemPage } from "./store.ts";
 
 // A list of items of one kind (projects, news) that the customer adds,
 // orders, hides and removes in the admin. Items live in D1 only: a site seeds
-// its existing ones once (collectionSeed) and keeps no item defaults in git.
+// its existing ones once (collectionSeedBatch) and keeps no item defaults in git.
 export type CollectionDefinition = {
 	// In the admin's switcher and the list's heading: "Projecten".
 	label: string;
@@ -66,7 +66,7 @@ export function checkCollections(collections: Record<string, CollectionDefinitio
 	}
 }
 
-// One existing item for collectionSeed. `id` defaults to the slug, so running
+// One existing item for collectionSeedBatch. `id` defaults to the slug, so running
 // the same seed twice changes nothing. Texts are a string (a blank line starts
 // a new paragraph) or Portable Text blocks.
 export type SeedItem<C extends CollectionDefinition = CollectionDefinition> = {

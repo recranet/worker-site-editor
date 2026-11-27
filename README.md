@@ -314,7 +314,7 @@ process.stdout.write(JSON.stringify(batch));
 pnpm exec cf d1 raw <database-id> --batch @seed.json
 ```
 
-Add `--local` for `cf dev`. cf has no option to run a `.sql` file; `collectionSeed` (same arguments) gives the statements as plain SQL instead, one per line, to read or pass to `--sql`.
+Add `--local` for `cf dev`.
 
 - Each item's `id` defaults to its slug. Items whose id or slug is already there are skipped, so running it again keeps the customer's changes.
 - Fields are checked against the collection's; a misfit throws, naming the item. `published: false` seeds a hidden item.

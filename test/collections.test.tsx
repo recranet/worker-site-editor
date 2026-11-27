@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdminData } from "../src/admin-data.ts";
-import { collectionSeed, collectionSeedBatch, createEditor, slugify } from "../src/index.ts";
+import { collectionSeed, collectionSeedBatch, slugify } from "../src/collections.ts";
+import { createEditor } from "../src/index.ts";
 import { hasFields } from "../src/fields.ts";
 import {
 	createItem,

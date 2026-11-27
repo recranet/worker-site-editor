@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isSiteCustomer } from "../src/index.ts";
+import { isSiteCustomer } from "../src/auth.ts";
 import { readText } from "../src/store.ts";
 import { testR2 } from "./d1.ts";
 import { CUSTOMER, ISSUER, mockProvider } from "./provider.ts";

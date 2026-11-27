@@ -7,10 +7,8 @@ export {
 	type TextBlock,
 } from "./blocks.ts";
 export {
-	collectionSeed,
 	collectionSeedBatch,
 	defineCollection,
-	slugify,
 	type CollectionDefinition,
 	type Item,
 	type SeedItem,
@@ -18,4 +16,4 @@ export {
 } from "./collections.ts";
 export type { Field, FieldValues, ImageValue, ItemField } from "./fields.ts";
 export type { TextStyles } from "./text-styles.ts";
-export { isSiteCustomer, type AuthOptions } from "./auth.ts";
+export type { AuthOptions } from "./auth.ts";
