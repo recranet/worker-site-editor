@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdminData } from "../src/admin-data.ts";
-import { collectionSeed, createEditor, slugify } from "../src/index.ts";
+import { collectionSeed, collectionSeedBatch, createEditor, slugify } from "../src/index.ts";
 import { hasFields } from "../src/fields.ts";
 import {
 	createItem,
@@ -135,6 +135,52 @@ describe("storage", () => {
 		await seed(db);
 		expect(await listItems(db, "projects")).toHaveLength(3);
 		expect((await readItem(db, "projects", "kantoor"))?.title).toBe("Ander kantoor");
+	});
+
+	it("seeds from the batch form (cf d1 raw --batch) the same as from the SQL", async () => {
+		const items = [
+			{
+				slug: "villa-aan-zee",
+				title: "Het 'huis'? Ja",
+				fields: { place: "O'Neill" },
+				texts: { body: "Een villa." },
+			},
+			{ slug: "kantoor", title: "Kantoor", fields: { place: "Goes" }, published: false },
+		];
+		const batch = collectionSeedBatch("projects", collections.projects, items);
+		// Plain JSON with string params, as the batch file holds.
+		expect(JSON.parse(JSON.stringify(batch))).toEqual(batch);
+		expect(batch.every((s) => s.params.every((p) => typeof p === "string"))).toBe(true);
+
+		const fromBatch = testD1();
+		for (const s of batch)
+			await fromBatch
+				.prepare(s.sql)
+				.bind(...s.params)
+				.run();
+		const fromSql = testD1();
+		await fromSql.exec(collectionSeed("projects", collections.projects, items));
+		for (const db of [fromBatch, fromSql]) {
+			expect(await listItems(db, "projects")).toEqual([
+				{
+					id: "villa-aan-zee",
+					slug: "villa-aan-zee",
+					title: "Het 'huis'? Ja",
+					position: 0,
+					fields: { place: "O'Neill" },
+					published: true,
+				},
+				{
+					id: "kantoor",
+					slug: "kantoor",
+					title: "Kantoor",
+					position: 1,
+					fields: { place: "Goes" },
+					published: false,
+				},
+			]);
+			expect(await readText(db, itemPage("projects", "villa-aan-zee"), "body")).toHaveLength(1);
+		}
 	});
 
 	it("refuses seed items that don't fit the collection", () => {
