@@ -40,3 +40,15 @@ export function missing(value: PartValue, fields: readonly Field[]): string {
 	}
 	return "";
 }
+
+// The accessible names of an image field's preview and controls. `field`
+// names the field ("Banner bovenaan", "Foto van Kaart 2"). The stored name is
+// a random id, so the preview without alt text says which field it shows.
+export function imageNames(field: string, image: Image | undefined) {
+	return {
+		preview: image?.alt.trim() || `Gekozen afbeelding bij ${field}`,
+		alt: `Alt-tekst bij ${field}`,
+		remove: `Afbeelding bij ${field} verwijderen`,
+		file: image ? `Andere afbeelding bij ${field} kiezen` : `Afbeelding bij ${field} kiezen`,
+	};
+}

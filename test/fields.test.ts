@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { missing } from "../src/client/missing.ts";
+import { imageNames, missing } from "../src/client/missing.ts";
 import { hasFields, type Field } from "../src/fields.ts";
 import { renderContext } from "../src/render.ts";
 
@@ -53,5 +53,31 @@ describe("image alt texts", () => {
 		] as const satisfies readonly Field[];
 		expect(hasFields({}, required)).toBe(false);
 		expect(missing({}, required)).toBe("Kies een afbeelding bij Banner.");
+	});
+});
+
+describe("image field names", () => {
+	const src = "/media/3f2a.webp";
+
+	it("names the preview by its alt text", () => {
+		expect(imageNames("Banner bovenaan", { src, alt: " Strand bij zonsondergang " }).preview).toBe(
+			"Strand bij zonsondergang",
+		);
+	});
+
+	it("names a preview without alt text, decorative or not yet described, by its field", () => {
+		expect(imageNames("Banner bovenaan", { src, alt: "" }).preview).toBe(
+			"Gekozen afbeelding bij Banner bovenaan",
+		);
+	});
+
+	it("says which field the controls belong to", () => {
+		const names = imageNames("Foto van Kaart 2", { src, alt: "" });
+		expect(names.alt).toBe("Alt-tekst bij Foto van Kaart 2");
+		expect(names.remove).toBe("Afbeelding bij Foto van Kaart 2 verwijderen");
+		expect(names.file).toBe("Andere afbeelding bij Foto van Kaart 2 kiezen");
+		expect(imageNames("Banner bovenaan", undefined).file).toBe(
+			"Afbeelding bij Banner bovenaan kiezen",
+		);
 	});
 });

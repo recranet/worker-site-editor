@@ -41,6 +41,7 @@ import {
 	asList,
 	asRows,
 	asText,
+	imageNames,
 	missing,
 	type Image,
 	type PartValue,
@@ -770,7 +771,7 @@ function GalleryEditor() {
 					<ol className="gallery-list">
 						{images.map((image, i) => (
 							<li key={image._key ?? image.src}>
-								<img src={preview(image.src)} alt="" />
+								<img src={preview(image.src)} alt={image.alt.trim() || `Afbeelding ${i + 1}`} />
 								<Input
 									className="input"
 									placeholder="Wat staat erop?"
@@ -781,7 +782,7 @@ function GalleryEditor() {
 								<button
 									type="button"
 									className="button small"
-									aria-label="Omhoog"
+									aria-label={`Afbeelding ${i + 1} omhoog`}
 									disabled={i === 0}
 									onClick={() => move(i, -1)}
 								>
@@ -790,7 +791,7 @@ function GalleryEditor() {
 								<button
 									type="button"
 									className="button small"
-									aria-label="Omlaag"
+									aria-label={`Afbeelding ${i + 1} omlaag`}
 									disabled={i === images.length - 1}
 									onClick={() => move(i, 1)}
 								>
@@ -799,7 +800,7 @@ function GalleryEditor() {
 								<button
 									type="button"
 									className="button small"
-									aria-label="Verwijderen"
+									aria-label={`Afbeelding ${i + 1} verwijderen`}
 									onClick={() => setImages(images.filter((_, j) => j !== i))}
 								>
 									×
@@ -1047,6 +1048,7 @@ function Items(props: {
 						<FieldInput
 							key={f.name}
 							field={f}
+							owner={`${field.item} ${i + 1}`}
 							value={row[f.name]}
 							onChange={(v) => set(i, { [f.name]: v })}
 						/>
@@ -1066,13 +1068,21 @@ function Items(props: {
 	);
 }
 
-function FieldInput(props: { field: ItemField; value: unknown; onChange: (v: unknown) => void }) {
+// `owner` is the list item a field belongs to ("Kaart 2"), for the names of
+// its image's controls.
+function FieldInput(props: {
+	field: ItemField;
+	owner?: string;
+	value: unknown;
+	onChange: (v: unknown) => void;
+}) {
 	const { field } = props;
 	const label = "required" in field && field.required ? `${field.label} *` : field.label;
 	if (field.kind === "image")
 		return (
 			<ImageInput
 				label={label}
+				name={props.owner ? `${field.label} van ${props.owner}` : field.label}
 				decorative={field.decorative === true}
 				value={asImage(props.value)}
 				onChange={props.onChange}
@@ -1142,6 +1152,7 @@ function FieldInput(props: { field: ItemField; value: unknown; onChange: (v: unk
 // decorative one has no alt text: one saved before it turned decorative goes.
 function ImageInput(props: {
 	label: string;
+	name: string;
 	decorative: boolean;
 	value: Image | undefined;
 	onChange: (v: Image | undefined) => void;
@@ -1163,19 +1174,20 @@ function ImageInput(props: {
 			setBusy(false);
 		}
 	};
+	const names = imageNames(props.name, props.value);
 	return (
 		<fieldset className="image-field">
 			<legend>{props.label}</legend>
 			{props.value && (
 				<div className="image-row">
-					<img src={preview(props.value.src)} alt="" />
+					<img src={preview(props.value.src)} alt={names.preview} />
 					{props.decorative ? (
 						<span className="spacer"></span>
 					) : (
 						<Input
 							className="input"
 							placeholder="Wat staat erop?"
-							aria-label="Alt-tekst"
+							aria-label={names.alt}
 							value={props.value.alt}
 							onValueChange={(alt) => props.onChange({ ...props.value!, alt })}
 						/>
@@ -1183,7 +1195,7 @@ function ImageInput(props: {
 					<button
 						type="button"
 						className="button small"
-						aria-label="Afbeelding weghalen"
+						aria-label={names.remove}
 						onClick={() => props.onChange(undefined)}
 					>
 						×
@@ -1196,7 +1208,7 @@ function ImageInput(props: {
 					type="file"
 					accept={ACCEPT}
 					disabled={busy}
-					aria-label={props.value ? "Andere afbeelding" : "Afbeelding kiezen"}
+					aria-label={names.file}
 					onChange={(event) => {
 						const file = event.target.files?.[0];
 						event.target.value = "";
