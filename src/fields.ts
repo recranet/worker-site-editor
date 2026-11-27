@@ -9,9 +9,12 @@ export type ItemField =
 	| {
 			name: string;
 			label: string;
-			kind: "text" | "textarea" | "url" | "image";
+			kind: "text" | "textarea" | "url";
 			required?: boolean;
 	  }
+	// An image needs an alt text, unless it's `decorative` (a banner or a
+	// background photo): then the admin asks none and stores alt "".
+	| { name: string; label: string; kind: "image"; required?: boolean; decorative?: boolean }
 	| { name: string; label: string; kind: "select"; options: Record<string, string> }
 	// Several of the options (categories), stored as a list of their keys.
 	| {
@@ -105,8 +108,13 @@ function isField(value: unknown, field: Field): boolean {
 				new Set(value).size === value.length &&
 				value.every((v) => typeof v === "string" && Object.hasOwn(field.options, v))
 			);
+		// A decorative image's alt isn't read: one saved before the field
+		// turned decorative still fits.
 		case "image":
-			return isFieldImage(value);
+			return (
+				isFieldImage(value) &&
+				(field.decorative === true || (value as ImageValue).alt.trim() !== "")
+			);
 		case "items":
 			return (
 				Array.isArray(value) &&
