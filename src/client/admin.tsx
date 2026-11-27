@@ -1254,7 +1254,7 @@ function Bar() {
 				</a>
 			)}
 			<span className="email">{data.email}</span>
-			<form method="post" action="/admin/uitloggen">
+			<form method="post" action="/admin/sign-out">
 				<button type="submit" className="button">
 					Uitloggen
 				</button>
@@ -1389,7 +1389,7 @@ function CollectionList(props: { screen: CollectionScreen }) {
 	return (
 		<>
 			<h1 className="screen-title">{screen.title}</h1>
-			<form method="post" action={`${screen.href}nieuw`} className="toolbar new-item">
+			<form method="post" action={`${screen.href}new`} className="toolbar new-item">
 				<Input
 					className="input"
 					name="title"
@@ -1416,11 +1416,10 @@ function CollectionList(props: { screen: CollectionScreen }) {
 									Bekijk
 								</a>
 							)}
-							{i > 0 && post(`${item.href}verplaatsen`, { richting: "omhoog" }, "↑")}
-							{i < screen.items.length - 1 &&
-								post(`${item.href}verplaatsen`, { richting: "omlaag" }, "↓")}
+							{i > 0 && post(`${item.href}move`, { richting: "omhoog" }, "↑")}
+							{i < screen.items.length - 1 && post(`${item.href}move`, { richting: "omlaag" }, "↓")}
 							{post(
-								`${item.href}zichtbaar`,
+								`${item.href}visibility`,
 								{ zichtbaar: item.published ? "0" : "1" },
 								item.published ? "Verbergen" : "Tonen",
 							)}
@@ -1441,7 +1440,7 @@ function CollectionList(props: { screen: CollectionScreen }) {
 							gemaakt.
 						</Dialog.Description>
 						<div className="row">
-							{removing && post(`${removing.href}verwijderen`, {}, "Verwijderen", "danger")}
+							{removing && post(`${removing.href}delete`, {}, "Verwijderen", "danger")}
 							<Dialog.Close className="button">Annuleren</Dialog.Close>
 						</div>
 					</Dialog.Popup>

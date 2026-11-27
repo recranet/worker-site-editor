@@ -33,10 +33,10 @@ import {
 	type StoredItem,
 } from "./store.ts";
 
-// The customer's admin: one screen per text at /admin/teksten/<page>/<name>/,
-// a page's fields at /admin/velden/<page>/, a collection's list at
-// /admin/collecties/<collection>/ and an item below it (<id>/, and its texts
-// at <id>/teksten/<name>/).
+// The customer's admin: one screen per text at /admin/texts/<page>/<name>/,
+// a page's fields at /admin/fields/<page>/, a collection's list at
+// /admin/collections/<collection>/ and an item below it (<id>/, and its texts
+// at <id>/texts/<name>/).
 // The server renders the shell with the screen's data as JSON; the browser
 // bundle (client/admin.tsx, React with Base UI) renders the screen from it.
 // Save and sign-out are plain form POSTs with a 303 back.
@@ -89,7 +89,7 @@ export function createRoutes(config: RoutesConfig) {
 			body: {
 				provider: PROVIDER_ID,
 				callbackURL: "/admin/",
-				errorCallbackURL: "/admin/?fout=inloggen",
+				errorCallbackURL: "/admin/?error=sign-in",
 			},
 			returnHeaders: true,
 		});
@@ -100,10 +100,10 @@ export function createRoutes(config: RoutesConfig) {
 	}
 
 	// The retry button on the refused page.
-	app.post("/admin/inloggen", signIn);
+	app.post("/admin/sign-in", signIn);
 
 	// Back to the site: /admin/ would send the visitor straight to the provider.
-	app.post("/admin/uitloggen", async (c) => {
+	app.post("/admin/sign-out", async (c) => {
 		const { headers } = await c.var.auth.api.signOut({
 			headers: c.req.raw.headers,
 			returnHeaders: true,
@@ -119,9 +119,9 @@ export function createRoutes(config: RoutesConfig) {
 		...Object.entries(pages).map(([page, def]) => ({
 			title: def.title,
 			links: [
-				...(def.fields?.length ? [{ href: `/admin/velden/${page}/`, label: "Gegevens" }] : []),
+				...(def.fields?.length ? [{ href: `/admin/fields/${page}/`, label: "Gegevens" }] : []),
 				...Object.entries(def.texts).map(([name, text]) => ({
-					href: `/admin/teksten/${page}/${name}/`,
+					href: `/admin/texts/${page}/${name}/`,
 					label: text.label,
 				})),
 			],
@@ -131,7 +131,7 @@ export function createRoutes(config: RoutesConfig) {
 					{
 						title: "Collecties",
 						links: Object.entries(collections).map(([name, def]) => ({
-							href: `/admin/collecties/${name}/`,
+							href: `/admin/collections/${name}/`,
 							label: def.label,
 						})),
 					},
@@ -142,17 +142,31 @@ export function createRoutes(config: RoutesConfig) {
 	// Signed in: the first screen. Not signed in: the provider, or why it refused.
 	app.get("/admin/", async (c) => {
 		const session = await c.var.auth.api.getSession({ headers: c.req.raw.headers });
-		if (!session) return c.req.query("fout") === "inloggen" ? c.html(<Refused />) : signIn(c);
+		if (!session) return c.req.query("error") === "sign-in" ? c.html(<Refused />) : signIn(c);
 		const first = nav[0]?.links[0];
 		if (!first) return c.text("Deze site heeft geen bewerkbare teksten.");
 		return c.redirect(first.href, 303);
 	});
 
+	// The admin's paths were Dutch until 20261127.0.6; bookmarks to a screen
+	// still work. The POSTs only came from the admin itself and just moved.
+	for (const [from, to] of [
+		["teksten", "texts"],
+		["velden", "fields"],
+		["collecties", "collections"],
+	]) {
+		app.get(`/admin/${from}/*`, (c) => {
+			const rest = c.req.path.slice(`/admin/${from}/`.length);
+			const path = `/admin/${to}/${from === "collecties" ? rest.replace(/^([^/]+\/[^/]+\/)teksten\//, "$1texts/") : rest}`;
+			return c.redirect(path, 301);
+		});
+	}
+
 	// Everything below needs a session.
 	for (const path of [
-		"/admin/teksten/*",
-		"/admin/velden/*",
-		"/admin/collecties/*",
+		"/admin/texts/*",
+		"/admin/fields/*",
+		"/admin/collections/*",
 		"/admin/media",
 	]) {
 		app.use(path, async (c, next) => {
@@ -175,7 +189,7 @@ export function createRoutes(config: RoutesConfig) {
 		const all: AdminData = {
 			email: c.var.email,
 			nav,
-			saved: c.req.query("opgeslagen") !== undefined,
+			saved: c.req.query("saved") !== undefined,
 			media: media !== undefined,
 			blocks: [...schema.blocks.values()].map(({ name, label, section, fields }) => ({
 				name,
@@ -237,12 +251,12 @@ export function createRoutes(config: RoutesConfig) {
 		return { page, name, def, text: def.texts[name] };
 	}
 
-	app.get("/admin/teksten/:page/:name/", async (c) => {
+	app.get("/admin/texts/:page/:name/", async (c) => {
 		const found = findText(c.req.param("page"), c.req.param("name"));
 		if (!found) return c.notFound();
 		const stored = await readText(db, found.page, found.name);
 		return screen(c, found.text.label, {
-			current: `/admin/teksten/${found.page}/${found.name}/`,
+			current: `/admin/texts/${found.page}/${found.name}/`,
 			pagePath: found.def.path,
 			screen: {
 				kind: "text",
@@ -252,12 +266,12 @@ export function createRoutes(config: RoutesConfig) {
 		});
 	});
 
-	app.post("/admin/teksten/:page/:name/", async (c) => {
+	app.post("/admin/texts/:page/:name/", async (c) => {
 		const found = findText(c.req.param("page"), c.req.param("name"));
 		if (!found) return c.notFound();
 		if (!(await saveTextFrom(c, found.page, found.name)))
 			return refuse(c, "Deze tekst kan niet worden opgeslagen.");
-		return c.redirect(`/admin/teksten/${found.page}/${found.name}/?opgeslagen`, 303);
+		return c.redirect(`/admin/texts/${found.page}/${found.name}/?saved`, 303);
 	});
 
 	function findFields(page: string) {
@@ -266,13 +280,13 @@ export function createRoutes(config: RoutesConfig) {
 		return def.fields?.length ? { def, fields: def.fields } : undefined;
 	}
 
-	app.get("/admin/velden/:page/", async (c) => {
+	app.get("/admin/fields/:page/", async (c) => {
 		const page = c.req.param("page");
 		const found = findFields(page);
 		if (!found) return c.notFound();
 		const value = (await readPageFields(db, page)) ?? found.def.defaults ?? {};
 		return screen(c, `${found.def.title}: Gegevens`, {
-			current: `/admin/velden/${page}/`,
+			current: `/admin/fields/${page}/`,
 			pagePath: found.def.path,
 			screen: {
 				kind: "fields",
@@ -283,20 +297,20 @@ export function createRoutes(config: RoutesConfig) {
 		});
 	});
 
-	app.post("/admin/velden/:page/", async (c) => {
+	app.post("/admin/fields/:page/", async (c) => {
 		const page = c.req.param("page");
 		const found = findFields(page);
 		if (!found) return c.notFound();
 		const value = await postedFields(await c.req.formData(), found.fields);
 		if (!value) return refuse(c, "Deze gegevens kunnen niet worden opgeslagen.");
 		await savePageFields(db, page, value, c.var.email);
-		return c.redirect(`/admin/velden/${page}/?opgeslagen`, 303);
+		return c.redirect(`/admin/fields/${page}/?saved`, 303);
 	});
 
 	// Collections
 
-	const collectionHref = (name: string) => `/admin/collecties/${name}/`;
-	const itemHref = (name: string, id: string) => `/admin/collecties/${name}/${id}/`;
+	const collectionHref = (name: string) => `/admin/collections/${name}/`;
+	const itemHref = (name: string, id: string) => `/admin/collections/${name}/${id}/`;
 
 	function findCollection(name: string) {
 		return Object.hasOwn(collections, name) ? { name, def: collections[name] } : undefined;
@@ -313,7 +327,7 @@ export function createRoutes(config: RoutesConfig) {
 	const tabs = (name: string, def: CollectionDefinition, id: string): AdminLink[] => [
 		{ href: itemHref(name, id), label: "Gegevens" },
 		...Object.entries(def.texts).map(([text, t]) => ({
-			href: `${itemHref(name, id)}teksten/${text}/`,
+			href: `${itemHref(name, id)}texts/${text}/`,
 			label: t.label,
 		})),
 	];
@@ -321,7 +335,7 @@ export function createRoutes(config: RoutesConfig) {
 	const itemPath = (def: CollectionDefinition, item: StoredItem) =>
 		item.published ? def.path(item) : undefined;
 
-	app.get("/admin/collecties/:collection/", async (c) => {
+	app.get("/admin/collections/:collection/", async (c) => {
 		const found = findCollection(c.req.param("collection"));
 		if (!found) return c.notFound();
 		const { name, def } = found;
@@ -346,7 +360,7 @@ export function createRoutes(config: RoutesConfig) {
 
 	// A new item from its title, with a free slug made from it. It starts
 	// hidden, on top of the list.
-	app.post("/admin/collecties/:collection/nieuw", async (c) => {
+	app.post("/admin/collections/:collection/new", async (c) => {
 		const found = findCollection(c.req.param("collection"));
 		if (!found) return c.notFound();
 		const form = await c.req.formData();
@@ -360,7 +374,7 @@ export function createRoutes(config: RoutesConfig) {
 		return c.redirect(itemHref(found.name, id), 303);
 	});
 
-	app.get("/admin/collecties/:collection/:id/", async (c) => {
+	app.get("/admin/collections/:collection/:id/", async (c) => {
 		const found = await findItem(c.req.param("collection"), c.req.param("id"));
 		if (!found) return c.notFound();
 		const { name, def, item } = found;
@@ -380,7 +394,7 @@ export function createRoutes(config: RoutesConfig) {
 		});
 	});
 
-	app.post("/admin/collecties/:collection/:id/", async (c) => {
+	app.post("/admin/collections/:collection/:id/", async (c) => {
 		const found = await findItem(c.req.param("collection"), c.req.param("id"));
 		if (!found) return c.notFound();
 		const { name, def, item } = found;
@@ -395,10 +409,10 @@ export function createRoutes(config: RoutesConfig) {
 		const other = await readItemBySlug(db, name, slug);
 		if (other && other.id !== item.id) return refuse(c, `Het adres "${slug}" is al in gebruik.`);
 		await saveItem(db, name, item.id, { title, slug, fields }, c.var.email);
-		return c.redirect(`${itemHref(name, item.id)}?opgeslagen`, 303);
+		return c.redirect(`${itemHref(name, item.id)}?saved`, 303);
 	});
 
-	app.post("/admin/collecties/:collection/:id/verplaatsen", async (c) => {
+	app.post("/admin/collections/:collection/:id/move", async (c) => {
 		const found = await findItem(c.req.param("collection"), c.req.param("id"));
 		if (!found) return c.notFound();
 		const form = await c.req.formData();
@@ -407,7 +421,7 @@ export function createRoutes(config: RoutesConfig) {
 	});
 
 	// Showing needs the required fields: the site's render counts on them.
-	app.post("/admin/collecties/:collection/:id/zichtbaar", async (c) => {
+	app.post("/admin/collections/:collection/:id/visibility", async (c) => {
 		const found = await findItem(c.req.param("collection"), c.req.param("id"));
 		if (!found) return c.notFound();
 		const show = (await c.req.formData()).get("zichtbaar") === "1";
@@ -417,7 +431,7 @@ export function createRoutes(config: RoutesConfig) {
 		return c.redirect(collectionHref(found.name), 303);
 	});
 
-	app.post("/admin/collecties/:collection/:id/verwijderen", async (c) => {
+	app.post("/admin/collections/:collection/:id/delete", async (c) => {
 		const found = await findItem(c.req.param("collection"), c.req.param("id"));
 		if (!found) return c.notFound();
 		await deleteItem(db, found.name, found.item.id);
@@ -428,7 +442,7 @@ export function createRoutes(config: RoutesConfig) {
 		return Object.hasOwn(found.def.texts, name) ? found.def.texts[name] : undefined;
 	}
 
-	app.get("/admin/collecties/:collection/:id/teksten/:name/", async (c) => {
+	app.get("/admin/collections/:collection/:id/texts/:name/", async (c) => {
 		const found = await findItem(c.req.param("collection"), c.req.param("id"));
 		const text = found && findItemText(found, c.req.param("name"));
 		if (!found || !text) return c.notFound();
@@ -446,7 +460,7 @@ export function createRoutes(config: RoutesConfig) {
 		});
 	});
 
-	app.post("/admin/collecties/:collection/:id/teksten/:name/", async (c) => {
+	app.post("/admin/collections/:collection/:id/texts/:name/", async (c) => {
 		const found = await findItem(c.req.param("collection"), c.req.param("id"));
 		const text = found && findItemText(found, c.req.param("name"));
 		if (!found || !text) return c.notFound();
@@ -454,7 +468,7 @@ export function createRoutes(config: RoutesConfig) {
 		if (!(await saveTextFrom(c, page, c.req.param("name"))))
 			return refuse(c, "Deze tekst kan niet worden opgeslagen.");
 		return c.redirect(
-			`${itemHref(found.name, found.item.id)}teksten/${c.req.param("name")}/?opgeslagen`,
+			`${itemHref(found.name, found.item.id)}texts/${c.req.param("name")}/?saved`,
 			303,
 		);
 	});
@@ -465,7 +479,7 @@ export function createRoutes(config: RoutesConfig) {
 				<main class="refused">
 					<h1>Geen toegang</h1>
 					<p>Inloggen is niet gelukt. Dit adres heeft geen toegang tot deze site.</p>
-					<form method="post" action="/admin/inloggen">
+					<form method="post" action="/admin/sign-in">
 						<button type="submit" class="button primary">
 							Opnieuw inloggen
 						</button>

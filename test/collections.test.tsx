@@ -306,41 +306,41 @@ describe("admin", () => {
 
 	it("shows pages with their fields and the collections in the switcher, not the items", async () => {
 		const { data } = await admin();
-		const screen = await data("/admin/teksten/home/body/");
+		const screen = await data("/admin/texts/home/body/");
 		expect(screen.nav.map((g) => g.title)).toEqual(["Home", "Contact", "Collecties"]);
 		expect(screen.nav[1].links.map((l) => l.href)).toEqual([
-			"/admin/velden/contact/",
-			"/admin/teksten/contact/body/",
+			"/admin/fields/contact/",
+			"/admin/texts/contact/body/",
 		]);
 		expect(screen.nav[2].links).toEqual([
-			{ href: "/admin/collecties/projects/", label: "Projecten" },
+			{ href: "/admin/collections/projects/", label: "Projecten" },
 		]);
-		expect(screen.current).toBe("/admin/teksten/home/body/");
+		expect(screen.current).toBe("/admin/texts/home/body/");
 	});
 
 	it("edits a page's fields", async () => {
 		const { s, data, post } = await admin();
-		const before = await data("/admin/velden/contact/");
+		const before = await data("/admin/fields/contact/");
 		expect(before.screen).toMatchObject({ kind: "fields", value: { heading: "Neem contact op" } });
 		expect(before.pagePath).toBe("/contact/");
 
 		const value = { heading: "Bel ons", slides: [{ _key: "a", caption: "Een" }] };
-		const save = await post("/admin/velden/contact/", { value: JSON.stringify(value) });
+		const save = await post("/admin/fields/contact/", { value: JSON.stringify(value) });
 		expect(save.status).toBe(303);
-		expect(save.headers.get("location")).toBe("/admin/velden/contact/?opgeslagen");
+		expect(save.headers.get("location")).toBe("/admin/fields/contact/?saved");
 		expect((await s.editor.texts("contact")).fields).toEqual(value);
 
 		// A required field missing, or one the page doesn't have: refused.
-		expect((await post("/admin/velden/contact/", { value: "{}" })).status).toBe(400);
+		expect((await post("/admin/fields/contact/", { value: "{}" })).status).toBe(400);
 		const extra = JSON.stringify({ heading: "x", colour: "red" });
-		expect((await post("/admin/velden/contact/", { value: extra })).status).toBe(400);
+		expect((await post("/admin/fields/contact/", { value: extra })).status).toBe(400);
 		// A page without fields has no fields screen.
-		expect((await post("/admin/velden/home/", { value: "{}" })).status).toBe(404);
+		expect((await post("/admin/fields/home/", { value: "{}" })).status).toBe(404);
 	});
 
 	it("lists a collection's items, hidden ones too", async () => {
 		const { data } = await admin();
-		const list = await data("/admin/collecties/projects/");
+		const list = await data("/admin/collections/projects/");
 		expect(list.screen.kind).toBe("collection");
 		if (list.screen.kind !== "collection") return;
 		expect(list.screen.items.map((i) => [i.id, i.published])).toEqual([
@@ -348,23 +348,23 @@ describe("admin", () => {
 			["kantoor", true],
 			["schuur", false],
 		]);
-		expect(list.screen.items[0].href).toBe("/admin/collecties/projects/villa-aan-zee/");
-		expect(list.current).toBe("/admin/collecties/projects/");
+		expect(list.screen.items[0].href).toBe("/admin/collections/projects/villa-aan-zee/");
+		expect(list.current).toBe("/admin/collections/projects/");
 	});
 
 	it("adds an item with a free slug, hidden, on top", async () => {
 		const { s, post } = await admin();
-		const add = await post("/admin/collecties/projects/nieuw", { title: "Kantoor" });
+		const add = await post("/admin/collections/projects/new", { title: "Kantoor" });
 		expect(add.status).toBe(303);
 		const [first] = await listItems(s.db, "projects");
-		expect(add.headers.get("location")).toBe(`/admin/collecties/projects/${first.id}/`);
+		expect(add.headers.get("location")).toBe(`/admin/collections/projects/${first.id}/`);
 		expect(first).toMatchObject({ slug: "kantoor-2", title: "Kantoor", published: false });
-		expect((await post("/admin/collecties/projects/nieuw", { title: " " })).status).toBe(400);
+		expect((await post("/admin/collections/projects/new", { title: " " })).status).toBe(400);
 	});
 
 	it("saves an item's title, slug and fields", async () => {
 		const { s, data, post } = await admin();
-		const screen = await data("/admin/collecties/projects/kantoor/");
+		const screen = await data("/admin/collections/projects/kantoor/");
 		expect(screen.screen).toMatchObject({
 			kind: "item",
 			title: "Kantoor",
@@ -376,7 +376,7 @@ describe("admin", () => {
 		expect(screen.pagePath).toBe("/projecten/kantoor/");
 
 		const fields = { place: "Middelburg", categories: ["work", "living"] };
-		const save = await post("/admin/collecties/projects/kantoor/", {
+		const save = await post("/admin/collections/projects/kantoor/", {
 			title: "Kantoor Middelburg",
 			slug: "kantoor-middelburg",
 			value: JSON.stringify(fields),
@@ -387,7 +387,7 @@ describe("admin", () => {
 		expect(await s.editor.item("projects", "kantoor")).toBeUndefined();
 
 		const refused = (body: Record<string, string>) =>
-			post("/admin/collecties/projects/kantoor/", {
+			post("/admin/collections/projects/kantoor/", {
 				title: "Kantoor",
 				slug: "kantoor",
 				value: JSON.stringify({ place: "Goes" }),
@@ -404,16 +404,16 @@ describe("admin", () => {
 
 	it("edits an item's texts under its id, so a new slug keeps them", async () => {
 		const { s, data, post } = await admin();
-		const path = "/admin/collecties/projects/villa-aan-zee/teksten/photos/";
+		const path = "/admin/collections/projects/villa-aan-zee/texts/photos/";
 		const screen = await data(path);
 		expect(screen.screen).toMatchObject({ kind: "text", value: [] });
 
 		const value = [{ _type: "quote", _key: "q", text: "Mooi" }];
 		const save = await post(path, { value: JSON.stringify(value) });
-		expect(save.headers.get("location")).toBe(`${path}?opgeslagen`);
+		expect(save.headers.get("location")).toBe(`${path}?saved`);
 		expect(await readText(s.db, itemPage("projects", "villa-aan-zee"), "photos")).toEqual(value);
 		expect((await post(path, { value: "[{}]" })).status).toBe(400);
-		expect((await post("/admin/collecties/projects/villa-aan-zee/teksten/nope/", {})).status).toBe(
+		expect((await post("/admin/collections/projects/villa-aan-zee/texts/nope/", {})).status).toBe(
 			404,
 		);
 	});
@@ -421,36 +421,56 @@ describe("admin", () => {
 	it("moves, shows, hides and deletes items", async () => {
 		const { s, post } = await admin();
 		const order = async () => (await listItems(s.db, "projects")).map((i) => i.id);
-		await post("/admin/collecties/projects/kantoor/verplaatsen", { richting: "omhoog" });
+		await post("/admin/collections/projects/kantoor/move", { richting: "omhoog" });
 		expect(await order()).toEqual(["kantoor", "villa-aan-zee", "schuur"]);
-		await post("/admin/collecties/projects/kantoor/verplaatsen", { richting: "omlaag" });
+		await post("/admin/collections/projects/kantoor/move", { richting: "omlaag" });
 		expect(await order()).toEqual(["villa-aan-zee", "kantoor", "schuur"]);
 
-		await post("/admin/collecties/projects/kantoor/zichtbaar", { zichtbaar: "0" });
+		await post("/admin/collections/projects/kantoor/visibility", { zichtbaar: "0" });
 		expect(await s.editor.item("projects", "kantoor")).toBeUndefined();
-		await post("/admin/collecties/projects/kantoor/zichtbaar", { zichtbaar: "1" });
+		await post("/admin/collections/projects/kantoor/visibility", { zichtbaar: "1" });
 		expect(await s.editor.item("projects", "kantoor")).toBeDefined();
 
 		// A new item can't be shown before its required fields are filled in.
-		await post("/admin/collecties/projects/nieuw", { title: "Leeg" });
+		await post("/admin/collections/projects/new", { title: "Leeg" });
 		const [empty] = await listItems(s.db, "projects");
-		const show = await post(`/admin/collecties/projects/${empty.id}/zichtbaar`, { zichtbaar: "1" });
+		const show = await post(`/admin/collections/projects/${empty.id}/visibility`, {
+			zichtbaar: "1",
+		});
 		expect(show.status).toBe(400);
 
-		const del = await post("/admin/collecties/projects/villa-aan-zee/verwijderen", {});
-		expect(del.headers.get("location")).toBe("/admin/collecties/projects/");
+		const del = await post("/admin/collections/projects/villa-aan-zee/delete", {});
+		expect(del.headers.get("location")).toBe("/admin/collections/projects/");
 		expect(await order()).not.toContain("villa-aan-zee");
 	});
 
 	it("answers 404 for unknown collections and items, and needs a session", async () => {
 		const { s, get, post } = await admin();
-		expect((await get("/admin/collecties/nope/")).status).toBe(404);
-		expect((await get("/admin/collecties/projects/nope/")).status).toBe(404);
-		expect((await get("/admin/collecties/projects/..%2F/")).status).toBe(404);
-		expect((await post("/admin/collecties/nope/nieuw", { title: "X" })).status).toBe(404);
-		const anonymous = await s.request("/admin/collecties/projects/");
+		expect((await get("/admin/collections/nope/")).status).toBe(404);
+		expect((await get("/admin/collections/projects/nope/")).status).toBe(404);
+		expect((await get("/admin/collections/projects/..%2F/")).status).toBe(404);
+		expect((await post("/admin/collections/nope/new", { title: "X" })).status).toBe(404);
+		const anonymous = await s.request("/admin/collections/projects/");
 		expect(anonymous.headers.get("location")).toBe("/admin/");
-		const anonymousFields = await s.request("/admin/velden/contact/");
+		const anonymousFields = await s.request("/admin/fields/contact/");
 		expect(anonymousFields.headers.get("location")).toBe("/admin/");
+	});
+
+	it("sends the old Dutch screen paths on to the English ones", async () => {
+		const { s } = await admin();
+		for (const [from, to] of [
+			["/admin/teksten/home/body/", "/admin/texts/home/body/"],
+			["/admin/velden/contact/", "/admin/fields/contact/"],
+			["/admin/collecties/projects/", "/admin/collections/projects/"],
+			["/admin/collecties/projects/kantoor/", "/admin/collections/projects/kantoor/"],
+			[
+				"/admin/collecties/projects/kantoor/teksten/photos/",
+				"/admin/collections/projects/kantoor/texts/photos/",
+			],
+		]) {
+			const res = await s.request(from);
+			expect(res.status).toBe(301);
+			expect(res.headers.get("location")).toBe(to);
+		}
 	});
 });

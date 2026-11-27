@@ -53,9 +53,9 @@ describe("sign-in through the console", () => {
 		);
 
 		const admin = await s.request("/admin/", { headers: { cookie: jar.header() } });
-		expect(admin.headers.get("location")).toBe("/admin/teksten/home/body/");
+		expect(admin.headers.get("location")).toBe("/admin/texts/home/body/");
 
-		const screen = await s.request("/admin/teksten/home/body/", {
+		const screen = await s.request("/admin/texts/home/body/", {
 			headers: { cookie: jar.header() },
 		});
 		const html = await screen.text();
@@ -65,7 +65,7 @@ describe("sign-in through the console", () => {
 		expect(screen.headers.get("cache-control")).toBe("no-store");
 
 		const value = [{ _type: "quote", _key: "q", text: "Nieuw" }];
-		const save = await s.request("/admin/teksten/home/body/", {
+		const save = await s.request("/admin/texts/home/body/", {
 			method: "POST",
 			headers: { cookie: jar.header(), origin: "https://site.test" },
 			body: new URLSearchParams({ value: JSON.stringify(value) }),
@@ -84,7 +84,7 @@ describe("sign-in through the console", () => {
 		const { back, jar } = await signIn(s);
 		expect(back.headers.get("location")).toBe("/admin/");
 		const admin = await s.request("/admin/", { headers: { cookie: jar.header() } });
-		expect(admin.headers.get("location")).toBe("/admin/teksten/home/body/");
+		expect(admin.headers.get("location")).toBe("/admin/texts/home/body/");
 	});
 
 	it("refuses another customer's account", async () => {
@@ -92,10 +92,10 @@ describe("sign-in through the console", () => {
 		mockProvider(() => ({ ...customer, [`${ISSUER}/customer_id`]: 7 }));
 		const s = site();
 		const { back, jar } = await signIn(s);
-		expect(back.headers.get("location")).toMatch(/^\/admin\/\?fout=inloggen/);
-		const refused = await s.request("/admin/?fout=inloggen", { headers: { cookie: jar.header() } });
+		expect(back.headers.get("location")).toMatch(/^\/admin\/\?error=sign-in/);
+		const refused = await s.request("/admin/?error=sign-in", { headers: { cookie: jar.header() } });
 		expect(await refused.text()).toContain("Geen toegang");
-		const screen = await s.request("/admin/teksten/home/body/", {
+		const screen = await s.request("/admin/texts/home/body/", {
 			headers: { cookie: jar.header() },
 		});
 		expect(screen.headers.get("location")).toBe("/admin/");
@@ -109,7 +109,7 @@ describe("without a session", () => {
 
 	it("sends the admin's screens and uploads back to sign-in", async () => {
 		const s = site();
-		expect((await s.request("/admin/teksten/home/body/")).headers.get("location")).toBe("/admin/");
+		expect((await s.request("/admin/texts/home/body/")).headers.get("location")).toBe("/admin/");
 		const upload = await s.request("/admin/media", {
 			method: "POST",
 			headers: { origin: "https://site.test" },
@@ -120,7 +120,7 @@ describe("without a session", () => {
 
 	it("refuses a save from another origin", async () => {
 		const s = site();
-		const res = await s.request("/admin/teksten/home/body/", {
+		const res = await s.request("/admin/texts/home/body/", {
 			method: "POST",
 			headers: { origin: "https://evil.test", "content-type": "application/x-www-form-urlencoded" },
 			body: "value=[]",
@@ -190,7 +190,7 @@ describe("images through R2", () => {
 		});
 		expect(upload.status).toBe(404);
 		const screen = await (
-			await s.request("/admin/teksten/home/body/", { headers: { cookie: jar.header() } })
+			await s.request("/admin/texts/home/body/", { headers: { cookie: jar.header() } })
 		).text();
 		expect(screen).toContain('"media":false');
 		expect((await s.request("/media/0b2c7c1e-1f7a-4f0e-9a39-1f1f1f1f1f1f.png")).status).toBe(404);
