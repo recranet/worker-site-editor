@@ -135,6 +135,18 @@ describe("without a session", () => {
 		expect((await s.request("/admin/")).status).toBe(404);
 		expect(error).toHaveBeenCalledWith(expect.stringContaining("clientSecret"));
 	});
+
+	it("takes the env values as they are, undefined ones too", () => {
+		const error = vi.spyOn(console, "error").mockImplementation(() => {});
+		const partial = site({ auth: { ...auth, secret: undefined } });
+		expect(partial.editor.editing).toBe(false);
+		expect(error).toHaveBeenCalledWith(expect.stringContaining("secret"));
+		error.mockClear();
+		// No value at all: a site that doesn't edit yet, off without a word.
+		const none = site({ auth: { issuer: undefined, customerId: undefined } });
+		expect(none.editor.editing).toBe(false);
+		expect(error).not.toHaveBeenCalled();
+	});
 });
 
 describe("images through R2", () => {

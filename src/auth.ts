@@ -20,6 +20,9 @@ export type AuthOptions = {
 	secret: string;
 };
 
+// What a site passes: its env values as they are, any of them missing.
+export type AuthInput = { [K in keyof AuthOptions]?: AuthOptions[K] | undefined };
+
 export const PROVIDER_ID = "console";
 
 // Whether an ID token or UserInfo profile belongs to the site's customer.

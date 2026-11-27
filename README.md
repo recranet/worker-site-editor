@@ -92,7 +92,7 @@ export const editor = createEditor({
 });
 ```
 
-Without `db`, or with an `auth` value missing, the site has no admin and the pages show the default texts. A missing secret turns editing off with an error in the log instead of failing the site.
+Pass the env values as they are, without a check or `?? ""`. Without `db`, or with an `auth` value missing, the site has no admin and the pages show the default texts. A missing secret turns editing off with an error in the log instead of failing the site; with no `auth` value at all it is off without one.
 
 Mount the routes (`/admin/*`, `/api/auth/*`, `/media/*`) and render the texts:
 

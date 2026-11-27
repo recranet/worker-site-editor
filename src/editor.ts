@@ -1,6 +1,6 @@
 import { raw } from "hono/html";
 import type { HtmlEscapedString } from "hono/utils/html";
-import type { AuthOptions } from "./auth.ts";
+import type { AuthInput, AuthOptions } from "./auth.ts";
 import { createSchema, textToBlocks, type Block, type BlockDefinition } from "./blocks.ts";
 import { checkCollections, type CollectionDefinition, type Item } from "./collections.ts";
 import { hasFields, type Field, type FieldValues } from "./fields.ts";
@@ -57,8 +57,9 @@ export type EditorOptions<
 	// The texts' database (the site's D1 binding). Without `db` and `auth` the
 	// site has no admin and its pages show the default texts.
 	db?: D1Database;
-	// Sign-in through the console's OpenID provider.
-	auth?: AuthOptions;
+	// Sign-in through the console's OpenID provider. Pass the env values as they
+	// are: with one missing, editing is off.
+	auth?: AuthInput;
 	// The R2 bucket for images. Without it the editor has no image buttons.
 	media?: R2Bucket;
 	// Cloudflare Images, to serve uploads scaled with a srcset. Optional.
@@ -190,14 +191,14 @@ export function createEditor<
 }
 
 // Editing needs every auth option. A missing secret turns the admin off
-// instead of failing the whole site; the log says what's missing.
-function complete(auth: AuthOptions | undefined): AuthOptions | undefined {
+// instead of failing the whole site; the log says what's missing. Without
+// any value (a site that doesn't edit yet) it's off without a word.
+function complete(auth: AuthInput | undefined): AuthOptions | undefined {
 	if (!auth) return undefined;
-	const missing = (Object.keys(auth) as (keyof AuthOptions)[]).filter((k) => !auth[k]);
-	for (const k of ["issuer", "customerId", "clientId", "clientSecret", "secret"] as const) {
-		if (!(k in auth)) missing.push(k);
-	}
-	if (missing.length === 0) return auth;
-	console.error(`worker-site-editor: editing is off, auth is missing ${missing.join(", ")}`);
+	const keys = ["issuer", "customerId", "clientId", "clientSecret", "secret"] as const;
+	const missing = keys.filter((k) => !auth[k]);
+	if (missing.length === 0) return auth as AuthOptions;
+	if (missing.length < keys.length)
+		console.error(`worker-site-editor: editing is off, auth is missing ${missing.join(", ")}`);
 	return undefined;
 }
