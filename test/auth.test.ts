@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isSiteCustomer } from "../src/index.ts";
 import { readText } from "../src/store.ts";
 import { testR2 } from "./d1.ts";
-import { CUSTOMER, ISSUER, Jar, mockProvider } from "./provider.ts";
-import { auth, site } from "./site.tsx";
+import { CUSTOMER, ISSUER, mockProvider } from "./provider.ts";
+import { auth, signIn, site } from "./site.tsx";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -17,23 +17,6 @@ const customer = {
 	name: "Klant",
 	[`${ISSUER}/customer_id`]: Number(CUSTOMER),
 };
-
-// Signs in through the provider as a browser would: /admin/ to the provider,
-// back to the callback with the code and the state cookie.
-async function signIn(s: ReturnType<typeof site>, jar = new Jar()) {
-	const start = jar.take(await s.request("/admin/"));
-	expect(start.status).toBe(303);
-	const authorize = new URL(start.headers.get("location")!);
-	const back = jar.take(
-		await s.request(
-			`/api/auth/callback/console?code=the-code&state=${authorize.searchParams.get("state")}`,
-			{
-				headers: { cookie: jar.header() },
-			},
-		),
-	);
-	return { authorize, back, jar };
-}
 
 describe("isSiteCustomer", () => {
 	it("checks the issuer's customer_id claim against the site's customer", () => {

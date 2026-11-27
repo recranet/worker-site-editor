@@ -2,7 +2,7 @@ import { Hono, type Context } from "hono";
 import { csrf } from "hono/csrf";
 import { raw } from "hono/html";
 import type { Child } from "hono/jsx";
-import type { AdminData } from "./admin-data.ts";
+import type { AdminData, AdminLink } from "./admin-data.ts";
 import { createAuth, PROVIDER_ID, type Auth, type AuthOptions } from "./auth.ts";
 import {
 	clean,
@@ -12,17 +12,38 @@ import {
 	type Block,
 	type Schema,
 } from "./blocks.ts";
-import { serveMedia, uploadMedia } from "./media.ts";
-import { readText, saveText } from "./store.ts";
+import { isItemId, isSlug, slugify, type CollectionDefinition } from "./collections.ts";
 import type { PageDefinition } from "./editor.ts";
+import { hasFields, type Field } from "./fields.ts";
+import { serveMedia, uploadMedia } from "./media.ts";
+import {
+	createItem,
+	deleteItem,
+	itemPage,
+	listItems,
+	moveItem,
+	readItem,
+	readItemBySlug,
+	readPageFields,
+	readText,
+	savePageFields,
+	saveItem,
+	saveText,
+	setPublished,
+	type StoredItem,
+} from "./store.ts";
 
-// The customer's admin: one screen per text at /admin/teksten/<page>/<name>/.
+// The customer's admin: one screen per text at /admin/teksten/<page>/<name>/,
+// a page's fields at /admin/velden/<page>/, a collection's list at
+// /admin/collecties/<collection>/ and an item below it (<id>/, and its texts
+// at <id>/teksten/<name>/).
 // The server renders the shell with the screen's data as JSON; the browser
 // bundle (client/admin.tsx, React with Base UI) renders the screen from it.
 // Save and sign-out are plain form POSTs with a 303 back.
 
 export type RoutesConfig = {
 	pages: Record<string, PageDefinition>;
+	collections: Record<string, CollectionDefinition>;
 	schema: Schema;
 	db?: D1Database;
 	auth?: AuthOptions;
@@ -35,7 +56,7 @@ export type RoutesConfig = {
 type Env = { Variables: { auth: Auth; email: string } };
 
 export function createRoutes(config: RoutesConfig) {
-	const { pages, schema, db, auth, media, images } = config;
+	const { pages, collections, schema, db, auth, media, images } = config;
 	const app = new Hono<Env>();
 
 	// Images in the texts, from R2. Public, like the pages that show them.
@@ -92,21 +113,48 @@ export function createRoutes(config: RoutesConfig) {
 		return res;
 	});
 
-	const texts = Object.entries(pages).flatMap(([page, def]) =>
-		Object.keys(def.texts).map((name) => ({ page, name })),
-	);
+	// The switcher: per page its fields ("Gegevens") and texts, then the
+	// collections. Items are reached through their collection's list.
+	const nav: AdminData["nav"] = [
+		...Object.entries(pages).map(([page, def]) => ({
+			title: def.title,
+			links: [
+				...(def.fields?.length ? [{ href: `/admin/velden/${page}/`, label: "Gegevens" }] : []),
+				...Object.entries(def.texts).map(([name, text]) => ({
+					href: `/admin/teksten/${page}/${name}/`,
+					label: text.label,
+				})),
+			],
+		})),
+		...(Object.keys(collections).length > 0
+			? [
+					{
+						title: "Collecties",
+						links: Object.entries(collections).map(([name, def]) => ({
+							href: `/admin/collecties/${name}/`,
+							label: def.label,
+						})),
+					},
+				]
+			: []),
+	].filter((group) => group.links.length > 0);
 
-	// Signed in: the first text. Not signed in: the provider, or why it refused.
+	// Signed in: the first screen. Not signed in: the provider, or why it refused.
 	app.get("/admin/", async (c) => {
 		const session = await c.var.auth.api.getSession({ headers: c.req.raw.headers });
 		if (!session) return c.req.query("fout") === "inloggen" ? c.html(<Refused />) : signIn(c);
-		const first = texts[0];
+		const first = nav[0]?.links[0];
 		if (!first) return c.text("Deze site heeft geen bewerkbare teksten.");
-		return c.redirect(`/admin/teksten/${first.page}/${first.name}/`, 303);
+		return c.redirect(first.href, 303);
 	});
 
 	// Everything below needs a session.
-	for (const path of ["/admin/teksten/*", "/admin/media"]) {
+	for (const path of [
+		"/admin/teksten/*",
+		"/admin/velden/*",
+		"/admin/collecties/*",
+		"/admin/media",
+	]) {
 		app.use(path, async (c, next) => {
 			const session = await c.var.auth.api.getSession({ headers: c.req.raw.headers });
 			if (!session) return c.redirect("/admin/", 303);
@@ -118,29 +166,15 @@ export function createRoutes(config: RoutesConfig) {
 	// An image for a text; the editor puts the returned path in the text.
 	app.post("/admin/media", (c) => (media ? uploadMedia(media, c.req.raw) : c.notFound()));
 
-	function find(page: string, name: string) {
-		if (!Object.hasOwn(pages, page)) return undefined;
-		const def = pages[page];
-		if (!Object.hasOwn(def.texts, name)) return undefined;
-		return { page, name, def, text: def.texts[name] };
-	}
-
-	app.get("/admin/teksten/:page/:name/", async (c) => {
-		const found = find(c.req.param("page"), c.req.param("name"));
-		if (!found) return c.notFound();
-		const stored = await readText(db, found.page, found.name);
-		const data: AdminData = {
+	// The shell with the screen's data; the browser bundle renders the screen.
+	function screen(
+		c: Context<Env>,
+		title: string,
+		data: Pick<AdminData, "current" | "pagePath" | "screen">,
+	) {
+		const all: AdminData = {
 			email: c.var.email,
-			pages: Object.entries(pages).map(([page, def]) => ({
-				title: def.title,
-				texts: Object.entries(def.texts).map(([name, text]) => ({
-					value: `${page}/${name}`,
-					label: text.label,
-				})),
-			})),
-			current: `${found.page}/${found.name}`,
-			pagePath: found.def.path,
-			value: clean(stored ?? textToBlocks(found.text.default), schema),
+			nav,
 			saved: c.req.query("opgeslagen") !== undefined,
 			media: media !== undefined,
 			blocks: [...schema.blocks.values()].map(({ name, label, section, fields }) => ({
@@ -150,28 +184,279 @@ export function createRoutes(config: RoutesConfig) {
 				fields,
 			})),
 			textStyles: schema.textStyles,
+			...data,
 		};
 		return c.html(
-			<Shell title={found.text.label} stylesheet={config.stylesheet} admin={config.admin} script>
+			<Shell title={title} stylesheet={config.stylesheet} admin={config.admin} script>
 				<div id="admin"></div>
 				{/* "<" escaped, so a text can't close the script tag. */}
 				<script type="application/json" id="admin-data">
-					{raw(JSON.stringify(data).replaceAll("<", "\\u003c"))}
+					{raw(JSON.stringify(all).replaceAll("<", "\\u003c"))}
 				</script>
 			</Shell>,
 		);
-	});
+	}
 
-	app.post("/admin/teksten/:page/:name/", async (c) => {
-		const found = find(c.req.param("page"), c.req.param("name"));
-		if (!found) return c.notFound();
+	const refuse = (c: Context, text: string) => c.text(text, 400);
+
+	// The posted Portable Text, checked, with the stored blocks the site no
+	// longer knows put back.
+	async function saveTextFrom(c: Context<Env>, page: string, name: string) {
 		const form = await c.req.formData();
 		const posted = form.get("value");
 		const value = typeof posted === "string" ? parseBlocks(posted, schema) : undefined;
-		if (!value) return c.text("Deze tekst kan niet worden opgeslagen.", 400);
-		const stored: Block[] = (await readText(db, found.page, found.name)) ?? [];
-		await saveText(db, found.page, found.name, keepUnknown(stored, value, schema), c.var.email);
+		if (!value) return false;
+		const stored: Block[] = (await readText(db!, page, name)) ?? [];
+		await saveText(db!, page, name, keepUnknown(stored, value, schema), c.var.email);
+		return true;
+	}
+
+	// The posted field values (JSON in `value`), or undefined when they don't
+	// fit the fields.
+	async function postedFields(form: FormData, fields: readonly Field[]) {
+		const posted = form.get("value");
+		if (typeof posted !== "string" || posted.length > 200_000) return undefined;
+		try {
+			const value: unknown = JSON.parse(posted);
+			if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+			const record = value as Record<string, unknown>;
+			return hasFields(record, fields) && !("_type" in record) && !("_key" in record)
+				? record
+				: undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	// Pages
+
+	function findText(page: string, name: string) {
+		if (!Object.hasOwn(pages, page)) return undefined;
+		const def = pages[page];
+		if (!Object.hasOwn(def.texts, name)) return undefined;
+		return { page, name, def, text: def.texts[name] };
+	}
+
+	app.get("/admin/teksten/:page/:name/", async (c) => {
+		const found = findText(c.req.param("page"), c.req.param("name"));
+		if (!found) return c.notFound();
+		const stored = await readText(db, found.page, found.name);
+		return screen(c, found.text.label, {
+			current: `/admin/teksten/${found.page}/${found.name}/`,
+			pagePath: found.def.path,
+			screen: {
+				kind: "text",
+				title: `${found.def.title}: ${found.text.label}`,
+				value: clean(stored ?? textToBlocks(found.text.default), schema),
+			},
+		});
+	});
+
+	app.post("/admin/teksten/:page/:name/", async (c) => {
+		const found = findText(c.req.param("page"), c.req.param("name"));
+		if (!found) return c.notFound();
+		if (!(await saveTextFrom(c, found.page, found.name)))
+			return refuse(c, "Deze tekst kan niet worden opgeslagen.");
 		return c.redirect(`/admin/teksten/${found.page}/${found.name}/?opgeslagen`, 303);
+	});
+
+	function findFields(page: string) {
+		if (!Object.hasOwn(pages, page)) return undefined;
+		const def = pages[page];
+		return def.fields?.length ? { def, fields: def.fields } : undefined;
+	}
+
+	app.get("/admin/velden/:page/", async (c) => {
+		const page = c.req.param("page");
+		const found = findFields(page);
+		if (!found) return c.notFound();
+		const value = (await readPageFields(db, page)) ?? found.def.defaults ?? {};
+		return screen(c, `${found.def.title}: Gegevens`, {
+			current: `/admin/velden/${page}/`,
+			pagePath: found.def.path,
+			screen: {
+				kind: "fields",
+				title: `${found.def.title}: Gegevens`,
+				fields: found.fields,
+				value,
+			},
+		});
+	});
+
+	app.post("/admin/velden/:page/", async (c) => {
+		const page = c.req.param("page");
+		const found = findFields(page);
+		if (!found) return c.notFound();
+		const value = await postedFields(await c.req.formData(), found.fields);
+		if (!value) return refuse(c, "Deze gegevens kunnen niet worden opgeslagen.");
+		await savePageFields(db, page, value, c.var.email);
+		return c.redirect(`/admin/velden/${page}/?opgeslagen`, 303);
+	});
+
+	// Collections
+
+	const collectionHref = (name: string) => `/admin/collecties/${name}/`;
+	const itemHref = (name: string, id: string) => `/admin/collecties/${name}/${id}/`;
+
+	function findCollection(name: string) {
+		return Object.hasOwn(collections, name) ? { name, def: collections[name] } : undefined;
+	}
+
+	async function findItem(name: string, id: string) {
+		const collection = findCollection(name);
+		if (!collection || !isItemId(id)) return undefined;
+		const item = await readItem(db!, name, id);
+		return item ? { ...collection, item } : undefined;
+	}
+
+	// The item's tabs: its fields, then each text.
+	const tabs = (name: string, def: CollectionDefinition, id: string): AdminLink[] => [
+		{ href: itemHref(name, id), label: "Gegevens" },
+		...Object.entries(def.texts).map(([text, t]) => ({
+			href: `${itemHref(name, id)}teksten/${text}/`,
+			label: t.label,
+		})),
+	];
+
+	const itemPath = (def: CollectionDefinition, item: StoredItem) =>
+		item.published ? def.path(item) : undefined;
+
+	app.get("/admin/collecties/:collection/", async (c) => {
+		const found = findCollection(c.req.param("collection"));
+		if (!found) return c.notFound();
+		const { name, def } = found;
+		const items = await listItems(db, name);
+		return screen(c, def.label, {
+			current: collectionHref(name),
+			screen: {
+				kind: "collection",
+				title: def.label,
+				item: def.item,
+				href: collectionHref(name),
+				items: items.map((item) => ({
+					id: item.id,
+					title: item.title,
+					published: item.published,
+					href: itemHref(name, item.id),
+					path: def.path(item),
+				})),
+			},
+		});
+	});
+
+	// A new item from its title, with a free slug made from it. It starts
+	// hidden, on top of the list.
+	app.post("/admin/collecties/:collection/nieuw", async (c) => {
+		const found = findCollection(c.req.param("collection"));
+		if (!found) return c.notFound();
+		const form = await c.req.formData();
+		const title = String(form.get("title") ?? "").trim();
+		if (!title || title.length > 300) return refuse(c, "Geef een titel van hoogstens 300 tekens.");
+		const base = slugify(title);
+		let slug = base;
+		for (let n = 2; await readItemBySlug(db, found.name, slug); n++) slug = `${base}-${n}`;
+		const id = crypto.randomUUID();
+		await createItem(db, found.name, { id, slug, title }, c.var.email);
+		return c.redirect(itemHref(found.name, id), 303);
+	});
+
+	app.get("/admin/collecties/:collection/:id/", async (c) => {
+		const found = await findItem(c.req.param("collection"), c.req.param("id"));
+		if (!found) return c.notFound();
+		const { name, def, item } = found;
+		return screen(c, item.title, {
+			current: collectionHref(name),
+			pagePath: itemPath(def, item),
+			screen: {
+				kind: "item",
+				title: item.title,
+				item: def.item,
+				slug: item.slug,
+				fields: def.fields,
+				value: item.fields,
+				tabs: tabs(name, def, item.id),
+				back: { href: collectionHref(name), label: def.label },
+			},
+		});
+	});
+
+	app.post("/admin/collecties/:collection/:id/", async (c) => {
+		const found = await findItem(c.req.param("collection"), c.req.param("id"));
+		if (!found) return c.notFound();
+		const { name, def, item } = found;
+		const form = await c.req.formData();
+		const title = String(form.get("title") ?? "").trim();
+		const slug = String(form.get("slug") ?? "").trim();
+		const fields = await postedFields(form, def.fields);
+		if (!title || title.length > 300) return refuse(c, "Geef een titel van hoogstens 300 tekens.");
+		if (!isSlug(slug))
+			return refuse(c, "Het adres mag alleen kleine letters, cijfers en streepjes bevatten.");
+		if (!fields) return refuse(c, "Deze gegevens kunnen niet worden opgeslagen.");
+		const other = await readItemBySlug(db, name, slug);
+		if (other && other.id !== item.id) return refuse(c, `Het adres "${slug}" is al in gebruik.`);
+		await saveItem(db, name, item.id, { title, slug, fields }, c.var.email);
+		return c.redirect(`${itemHref(name, item.id)}?opgeslagen`, 303);
+	});
+
+	app.post("/admin/collecties/:collection/:id/verplaatsen", async (c) => {
+		const found = await findItem(c.req.param("collection"), c.req.param("id"));
+		if (!found) return c.notFound();
+		const form = await c.req.formData();
+		await moveItem(db, found.name, found.item.id, form.get("richting") === "omhoog" ? -1 : 1);
+		return c.redirect(collectionHref(found.name), 303);
+	});
+
+	// Showing needs the required fields: the site's render counts on them.
+	app.post("/admin/collecties/:collection/:id/zichtbaar", async (c) => {
+		const found = await findItem(c.req.param("collection"), c.req.param("id"));
+		if (!found) return c.notFound();
+		const show = (await c.req.formData()).get("zichtbaar") === "1";
+		if (show && !hasFields(found.item.fields, found.def.fields))
+			return refuse(c, `Vul eerst de verplichte velden in: ${found.item.title}.`);
+		await setPublished(db, found.name, found.item.id, show, c.var.email);
+		return c.redirect(collectionHref(found.name), 303);
+	});
+
+	app.post("/admin/collecties/:collection/:id/verwijderen", async (c) => {
+		const found = await findItem(c.req.param("collection"), c.req.param("id"));
+		if (!found) return c.notFound();
+		await deleteItem(db, found.name, found.item.id);
+		return c.redirect(collectionHref(found.name), 303);
+	});
+
+	function findItemText(found: { def: CollectionDefinition }, name: string) {
+		return Object.hasOwn(found.def.texts, name) ? found.def.texts[name] : undefined;
+	}
+
+	app.get("/admin/collecties/:collection/:id/teksten/:name/", async (c) => {
+		const found = await findItem(c.req.param("collection"), c.req.param("id"));
+		const text = found && findItemText(found, c.req.param("name"));
+		if (!found || !text) return c.notFound();
+		const { name, def, item } = found;
+		const stored = await readText(db, itemPage(name, item.id), c.req.param("name"));
+		return screen(c, `${item.title}: ${text.label}`, {
+			current: collectionHref(name),
+			pagePath: itemPath(def, item),
+			screen: {
+				kind: "text",
+				title: item.title,
+				value: clean(stored ?? [], schema),
+				tabs: tabs(name, def, item.id),
+			},
+		});
+	});
+
+	app.post("/admin/collecties/:collection/:id/teksten/:name/", async (c) => {
+		const found = await findItem(c.req.param("collection"), c.req.param("id"));
+		const text = found && findItemText(found, c.req.param("name"));
+		if (!found || !text) return c.notFound();
+		const page = itemPage(found.name, found.item.id);
+		if (!(await saveTextFrom(c, page, c.req.param("name"))))
+			return refuse(c, "Deze tekst kan niet worden opgeslagen.");
+		return c.redirect(
+			`${itemHref(found.name, found.item.id)}teksten/${c.req.param("name")}/?opgeslagen`,
+			303,
+		);
 	});
 
 	function Refused() {

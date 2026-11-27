@@ -12,7 +12,15 @@ export type ItemField =
 			kind: "text" | "textarea" | "url" | "image";
 			required?: boolean;
 	  }
-	| { name: string; label: string; kind: "select"; options: Record<string, string> };
+	| { name: string; label: string; kind: "select"; options: Record<string, string> }
+	// Several of the options (categories), stored as a list of their keys.
+	| {
+			name: string;
+			label: string;
+			kind: "choices";
+			options: Record<string, string>;
+			required?: boolean;
+	  };
 
 // A list of items, each with its own fields: no lists inside lists.
 export type Field =
@@ -27,9 +35,11 @@ type ValueOf<F> = F extends { kind: "items"; fields: infer I extends readonly It
 	? ({ _key: string } & FieldValues<I>)[]
 	: F extends { kind: "image" }
 		? ImageValue
-		: F extends { kind: "select"; options: infer O }
-			? keyof O & string
-			: string;
+		: F extends { kind: "choices"; options: infer O }
+			? (keyof O & string)[]
+			: F extends { kind: "select"; options: infer O }
+				? keyof O & string
+				: string;
 
 type Required<F> = F extends { required: true } ? true : false;
 
@@ -78,7 +88,8 @@ export function hasFields(value: Record<string, unknown>, fields: readonly Field
 }
 
 function isField(value: unknown, field: Field): boolean {
-	if (value === undefined || value === "") return !("required" in field && field.required);
+	if (value === undefined || value === "" || (Array.isArray(value) && value.length === 0))
+		return !("required" in field && field.required);
 	switch (field.kind) {
 		case "text":
 			return typeof value === "string" && value.length <= 300;
@@ -88,6 +99,12 @@ function isField(value: unknown, field: Field): boolean {
 			return typeof value === "string" && value.length <= 2000 && uriLooksSafe(value);
 		case "select":
 			return typeof value === "string" && Object.hasOwn(field.options, value);
+		case "choices":
+			return (
+				Array.isArray(value) &&
+				new Set(value).size === value.length &&
+				value.every((v) => typeof v === "string" && Object.hasOwn(field.options, v))
+			);
 		case "image":
 			return isFieldImage(value);
 		case "items":

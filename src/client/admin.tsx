@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 /// <reference lib="dom" />
-// The admin screen: switch texts, edit one with the Portable Text editor, save.
+// The admin screens: switch texts, edit one with the Portable Text editor,
+// edit a page's or an item's fields, and a collection's list of items.
 // React because @portabletext/editor needs it; the controls are Base UI,
 // styled in admin.css. It renders from the JSON the server put in the page
 // (index.tsx), and Save is a plain form POST.
@@ -109,7 +110,7 @@ const buildSchema = () =>
 				fields: part.fields.map((f) => ({
 					name: f.name,
 					type:
-						f.kind === "items"
+						f.kind === "items" || f.kind === "choices"
 							? ("array" as const)
 							: f.kind === "image"
 								? ("object" as const)
@@ -146,6 +147,7 @@ function editPart(edit: PartEdit) {
 
 const asText = (v: unknown) => (typeof v === "string" ? v : "");
 const asRows = (v: unknown) => (Array.isArray(v) ? (v as Row[]) : []);
+const asList = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
 const asImage = (v: unknown) =>
 	typeof v === "object" && v !== null && typeof (v as Image).src === "string"
 		? (v as Image)
@@ -314,22 +316,25 @@ const buildNodes = () => [
 	),
 ];
 
-// Each text has its own URL, so switching loads that page.
-function TextSelect() {
+// Each screen has its own URL, so switching loads that page.
+function Switcher() {
 	// The switcher's items, grouped by page. The trigger shows "Page: Label".
-	const groups = data.pages.map((page) => ({
-		value: page.title,
-		items: page.texts.map((text) => ({ value: text.value, label: `${page.title}: ${text.label}` })),
+	const groups = data.nav.map((group) => ({
+		value: group.title,
+		items: group.links.map((link) => ({
+			value: link.href,
+			label: `${group.title}: ${link.label}`,
+		})),
 	}));
 	return (
 		<Select.Root
 			items={groups}
 			value={data.current}
 			onValueChange={(value) => {
-				if (value && value !== data.current) window.location.assign(`/admin/teksten/${value}/`);
+				if (value && value !== data.current) window.location.assign(value);
 			}}
 		>
-			<Select.Trigger className="select" aria-label="Tekst">
+			<Select.Trigger className="select" aria-label="Scherm">
 				<Select.Value />
 				<Select.Icon className="select-icon">▾</Select.Icon>
 			</Select.Trigger>
@@ -337,13 +342,15 @@ function TextSelect() {
 				<Select.Positioner sideOffset={4} alignItemWithTrigger={false} align="start">
 					<Select.Popup className="popup select-popup">
 						<Select.List>
-							{data.pages.map((page) => (
-								<Select.Group key={page.title} className="select-group">
-									<Select.GroupLabel className="select-group-label">{page.title}</Select.GroupLabel>
-									{page.texts.map((text) => (
-										<Select.Item key={text.value} value={text.value} className="select-item">
+							{data.nav.map((group) => (
+								<Select.Group key={group.title} className="select-group">
+									<Select.GroupLabel className="select-group-label">
+										{group.title}
+									</Select.GroupLabel>
+									{group.links.map((link) => (
+										<Select.Item key={link.href} value={link.href} className="select-item">
 											<Select.ItemIndicator className="select-check">✓</Select.ItemIndicator>
-											<Select.ItemText>{text.label}</Select.ItemText>
+											<Select.ItemText>{link.label}</Select.ItemText>
 										</Select.Item>
 									))}
 								</Select.Group>
@@ -883,6 +890,8 @@ function missing(value: PartValue, fields: readonly Field[]): string {
 			if (!image && f.required) return `Kies een afbeelding bij ${f.label}.`;
 			if (image && image.alt.trim() === "")
 				return `Beschrijf de afbeelding bij ${f.label} voor wie hem niet ziet.`;
+		} else if (f.kind === "choices") {
+			if (f.required && asList(v).length === 0) return `Kies minstens een ${f.label}.`;
 		} else if ("required" in f && f.required && asText(v).trim() === "") {
 			return `Vul ${f.label} in.`;
 		}
@@ -1091,6 +1100,31 @@ function FieldInput(props: { field: ItemField; value: unknown; onChange: (v: unk
 	const label = "required" in field && field.required ? `${field.label} *` : field.label;
 	if (field.kind === "image")
 		return <ImageInput label={label} value={asImage(props.value)} onChange={props.onChange} />;
+	if (field.kind === "choices") {
+		const chosen = asList(props.value);
+		return (
+			<fieldset className="choices">
+				<legend>{label}</legend>
+				{Object.entries(field.options).map(([value, text]) => (
+					<label key={value} className="choice">
+						<input
+							type="checkbox"
+							checked={chosen.includes(value)}
+							onChange={(event) => {
+								const next = event.target.checked
+									? [...chosen, value]
+									: chosen.filter((v) => v !== value);
+								// In the options' order, and none as no value.
+								const ordered = Object.keys(field.options).filter((o) => next.includes(o));
+								props.onChange(ordered.length ? ordered : undefined);
+							}}
+						/>
+						{text}
+					</label>
+				))}
+			</fieldset>
+		);
+	}
 	return (
 		<label className="field">
 			<span>{label}</span>
@@ -1213,33 +1247,265 @@ function EditForm() {
 	);
 }
 
+// The bar on top of every screen: the switcher, the page on the site, sign-out.
+function Bar() {
+	return (
+		<header className="bar">
+			<Switcher />
+			{data.pagePath && (
+				<a className="button" href={data.pagePath} target="_blank">
+					Bekijk de pagina
+				</a>
+			)}
+			<span className="email">{data.email}</span>
+			<form method="post" action="/admin/uitloggen">
+				<button type="submit" className="button">
+					Uitloggen
+				</button>
+			</form>
+		</header>
+	);
+}
+
+// An item's screens: its fields, then each text.
+function Tabs(props: { tabs: { href: string; label: string }[] }) {
+	const here = window.location.pathname;
+	return (
+		<nav className="tabs" aria-label="Onderdelen">
+			{props.tabs.map((tab) => (
+				<a key={tab.href} href={tab.href} aria-current={tab.href === here ? "page" : undefined}>
+					{tab.label}
+				</a>
+			))}
+		</nav>
+	);
+}
+
+function Saved() {
+	return data.saved ? (
+		<span role="status" className="saved">
+			Opgeslagen
+		</span>
+	) : null;
+}
+
+function Problem(props: { text: string }) {
+	return props.text ? (
+		<p className="problem" role="alert">
+			{props.text}
+		</p>
+	) : null;
+}
+
+// A page's fields, or an item's (with its title and slug): the form built
+// from the fields, posted as JSON in `value`.
+function FieldsForm(props: {
+	fields: readonly Field[];
+	value: Record<string, unknown>;
+	item?: { title: string; slug: string };
+}) {
+	const [value, setValue] = useState<PartValue>(props.value);
+	const [title, setTitle] = useState(props.item?.title ?? "");
+	const [slug, setSlug] = useState(props.item?.slug ?? "");
+	const [problem, setProblem] = useState("");
+	const hidden = useRef<HTMLInputElement>(null);
+	return (
+		<form
+			method="post"
+			className="fields-form"
+			onSubmit={(event) => {
+				const wrong =
+					(props.item && title.trim() === "" ? "Vul de titel in." : "") ||
+					(props.item && !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)
+						? "Het adres mag alleen kleine letters, cijfers en streepjes bevatten."
+						: "") ||
+					missing(value, props.fields);
+				if (wrong) {
+					event.preventDefault();
+					setProblem(wrong);
+					return;
+				}
+				// Emptied fields leave the value.
+				const set = Object.fromEntries(
+					Object.entries(value).filter(([, v]) => v !== undefined && v !== ""),
+				);
+				hidden.current!.value = JSON.stringify(set);
+			}}
+		>
+			{props.item && (
+				<div className="fields">
+					<label className="field">
+						<span>Titel *</span>
+						<Input className="input" name="title" value={title} onValueChange={setTitle} />
+					</label>
+					<label className="field">
+						<span>Adres</span>
+						<Input
+							className="input"
+							name="slug"
+							value={slug}
+							onValueChange={setSlug}
+							aria-describedby="slug-hint"
+						/>
+						<small className="hint" id="slug-hint">
+							Het laatste deel van de link naar deze pagina. Na een wijziging werkt de oude link
+							niet meer.
+						</small>
+					</label>
+				</div>
+			)}
+			<Fields
+				fields={props.fields}
+				value={value}
+				onChange={(next) => setValue((current) => ({ ...current, ...next }))}
+			/>
+			<input type="hidden" name="value" ref={hidden} />
+			<Problem text={problem} />
+			<div className="row">
+				<button type="submit" className="button primary">
+					Opslaan
+				</button>
+				<Saved />
+			</div>
+		</form>
+	);
+}
+
+type CollectionScreen = Extract<AdminData["screen"], { kind: "collection" }>;
+
+// A collection's items in the site's order: open, move, show or hide,
+// delete (after a question), and a new one on top.
+function CollectionList(props: { screen: CollectionScreen }) {
+	const { screen } = props;
+	const [removing, setRemoving] = useState<CollectionScreen["items"][number] | null>(null);
+	const post = (href: string, fields: Record<string, string>, label: string, extra = "") => (
+		<form method="post" action={href}>
+			{Object.entries(fields).map(([name, value]) => (
+				<input key={name} type="hidden" name={name} value={value} />
+			))}
+			<button type="submit" className={`button small ${extra}`}>
+				{label}
+			</button>
+		</form>
+	);
+	return (
+		<>
+			<h1 className="screen-title">{screen.title}</h1>
+			<form method="post" action={`${screen.href}nieuw`} className="row new-item">
+				<Input
+					className="input"
+					name="title"
+					required
+					placeholder={`Titel van het nieuwe ${screen.item.toLowerCase()}`}
+					aria-label="Titel"
+				/>
+				<button type="submit" className="button primary">
+					{screen.item} toevoegen
+				</button>
+			</form>
+			{screen.items.length === 0 ? (
+				<p className="hint">Nog geen {screen.title.toLowerCase()}.</p>
+			) : (
+				<ol className="item-list">
+					{screen.items.map((item, i) => (
+						<li key={item.id} className={item.published ? undefined : "hidden-item"}>
+							<a href={item.href} className="item-title">
+								{item.title}
+							</a>
+							{!item.published && <span className="badge">Verborgen</span>}
+							{item.published && (
+								<a className="button small" href={item.path} target="_blank">
+									Bekijk
+								</a>
+							)}
+							{i > 0 && post(`${item.href}verplaatsen`, { richting: "omhoog" }, "↑")}
+							{i < screen.items.length - 1 &&
+								post(`${item.href}verplaatsen`, { richting: "omlaag" }, "↓")}
+							{post(
+								`${item.href}zichtbaar`,
+								{ zichtbaar: item.published ? "0" : "1" },
+								item.published ? "Verbergen" : "Tonen",
+							)}
+							<button type="button" className="button small" onClick={() => setRemoving(item)}>
+								Verwijderen
+							</button>
+						</li>
+					))}
+				</ol>
+			)}
+			<Dialog.Root open={removing !== null} onOpenChange={(open) => !open && setRemoving(null)}>
+				<Dialog.Portal>
+					<Dialog.Backdrop className="backdrop" />
+					<Dialog.Popup className="popup dialog">
+						<Dialog.Title className="popup-title">{screen.item} verwijderen?</Dialog.Title>
+						<Dialog.Description>
+							{removing?.title} en de teksten ervan worden verwijderd. Dat kan niet ongedaan worden
+							gemaakt.
+						</Dialog.Description>
+						<div className="row">
+							{removing && post(`${removing.href}verwijderen`, {}, "Verwijderen", "danger")}
+							<Dialog.Close className="button">Annuleren</Dialog.Close>
+						</div>
+					</Dialog.Popup>
+				</Dialog.Portal>
+			</Dialog.Root>
+		</>
+	);
+}
+
 function Screen(props: {
 	schemaDefinition: ReturnType<typeof buildSchema>;
 	nodes: ReturnType<typeof buildNodes>;
 }) {
 	const { schemaDefinition, nodes } = props;
+	const screen = data.screen;
+	if (screen.kind === "text") {
+		return (
+			<EditorProvider
+				initialConfig={{ schemaDefinition, initialValue: screen.value as PortableTextBlock[] }}
+			>
+				<NodePlugin nodes={nodes} />
+				<Bar />
+				<main>
+					{screen.tabs && (
+						<>
+							<h1 className="screen-title">{screen.title}</h1>
+							<Tabs tabs={screen.tabs} />
+						</>
+					)}
+					<EditForm />
+				</main>
+				<GalleryEditor />
+				<PartEditor />
+			</EditorProvider>
+		);
+	}
 	return (
-		<EditorProvider
-			initialConfig={{ schemaDefinition, initialValue: data.value as PortableTextBlock[] }}
-		>
-			<NodePlugin nodes={nodes} />
-			<header className="bar">
-				<TextSelect />
-				<a className="button" href={data.pagePath} target="_blank">
-					Bekijk de pagina
-				</a>
-				<span className="email">{data.email}</span>
-				<form method="post" action="/admin/uitloggen">
-					<button type="submit" className="button">
-						Uitloggen
-					</button>
-				</form>
-			</header>
-			<main>
-				<EditForm />
+		<>
+			<Bar />
+			<main className="form-screen">
+				{screen.kind === "fields" && (
+					<>
+						<h1 className="screen-title">{screen.title}</h1>
+						<FieldsForm fields={screen.fields} value={screen.value} />
+					</>
+				)}
+				{screen.kind === "item" && (
+					<>
+						<a className="back" href={screen.back.href}>
+							← {screen.back.label}
+						</a>
+						<h1 className="screen-title">{screen.title}</h1>
+						<Tabs tabs={screen.tabs} />
+						<FieldsForm
+							fields={screen.fields}
+							value={screen.value}
+							item={{ title: screen.title, slug: screen.slug }}
+						/>
+					</>
+				)}
+				{screen.kind === "collection" && <CollectionList screen={screen} />}
 			</main>
-			<GalleryEditor />
-			<PartEditor />
-		</EditorProvider>
+		</>
 	);
 }

@@ -9,6 +9,7 @@ The core is small:
 - Sign-in through the console's OpenID provider (`auth.recranet.dev`, `auth.elloro.dev`) with Better Auth: a mail link for the customer, the console for staff. The site keeps no passwords or users; the session is an encrypted cookie.
 - `/admin/`: the Portable Text editor, one screen per editable text, in Dutch. Built-in: bold, italic, underline, strike-through, H2, H3, quote, lists, link, and with an R2 bucket one image and a gallery.
 - Texts in the site's D1, images in its R2 bucket (optional), scaled by Cloudflare Images (optional).
+- Page fields (a heading, a banner, a list of slides) and collections (projects, news): items the customer adds, orders, hides and removes.
 - Rendering of the texts for the pages.
 - `defineBlock` and `defineBlockEditor`: the registration point for blocks, with their own editor UI.
 
@@ -173,6 +174,152 @@ pnpm exec cf d1 migrations apply <database-id> --dir node_modules/@recranet/work
 
 Add `--local` for `cf dev`. A site from the starter that already has the `block` table is fine: the first migration is `CREATE TABLE IF NOT EXISTS`. A package release that adds a migration says so in its notes.
 
+- `0001_block.sql`: table `block`, the texts (a page's, and a collection item's under page `item:<collection>:<id>`).
+- `0002_item_page_fields.sql`: table `item` (collection items) and `page_fields` (a page's field values).
+
+## Page fields
+
+A page can have fields beside its texts: values the customer edits in a form ("Gegevens" in the switcher), with the same field kinds as blocks.
+
+```ts
+pages: {
+	home: {
+		title: "Home",
+		path: "/",
+		fields: [
+			{ name: "heading", label: "Kop", kind: "text", required: true },
+			{ name: "banner", label: "Banner", kind: "image" },
+			{
+				name: "slides",
+				label: "Dia's",
+				item: "Dia",
+				kind: "items",
+				fields: [
+					{ name: "image", label: "Afbeelding", kind: "image", required: true },
+					{ name: "caption", label: "Onderschrift", kind: "text" },
+				],
+			},
+		],
+		// Until the customer saves the form. Checked against the fields at start.
+		defaults: { heading: "Architectuur met aandacht" },
+		texts: { body: { label: "Pagina", default: "Welkom." } },
+	},
+},
+```
+
+```tsx
+const home = await editor.texts("home"); // texts and fields, two queries in parallel
+home.fields.heading; // typed from the fields: string
+home.fields.banner && editor.image(home.fields.banner, { sizes: "100vw", eager: true });
+home.fields.slides?.map((slide) => slide.caption);
+```
+
+The saved form replaces the defaults as a whole: a field added later shows its default only on pages whose form was never saved.
+
+## Collections
+
+A collection is a list of items of one kind: projects, news. The customer adds, orders, hides and deletes items and edits every field and text of one; adding a project needs no developer. Items live in D1 only; the site keeps no item defaults in git and seeds its existing items once (below).
+
+```ts
+// src/collections.ts
+import { defineCollection } from "@recranet/worker-site-editor";
+
+export const projects = defineCollection({
+	label: "Projecten",
+	item: "Project",
+	// Every item has a title and a slug; these come on top.
+	fields: [
+		{ name: "place", label: "Plaats", kind: "text", required: true },
+		{ name: "year", label: "Jaar", kind: "text" },
+		{
+			name: "categories",
+			label: "Categorieën",
+			kind: "choices",
+			options: { living: "Wonen", work: "Werken", care: "Zorg" },
+		},
+		{ name: "image", label: "Afbeelding", kind: "image", required: true },
+	],
+	// Portable Text texts per item, each with its own editor.
+	texts: { body: { label: "Tekst" }, photos: { label: "Foto's" } },
+	path: (item) => `/projecten/${item.slug}/`,
+});
+
+// src/editor.ts
+createEditor({ pages, collections: { projects, news }, ... });
+```
+
+`defineCollection` keeps the field names as literals, so items are typed; a collection written inline in `createEditor` needs no helper. The collection's key (`projects`) is stored with its items: renaming it loses them.
+
+```tsx
+// The overview: the shown items in the customer's order, fields only.
+app.get("/projecten/", async (c) => {
+	const items = await editor.items("projects");
+	return c.html(
+		<Layout>
+			{items.map((p) => (
+				<a href={p.path}>
+					{p.title}, {p.fields.place}
+				</a>
+			))}
+		</Layout>,
+	);
+});
+
+// One item by slug, with its texts. Unknown or hidden: undefined, so 404.
+app.get("/projecten/:slug/", async (c) => {
+	const project = await editor.item("projects", c.req.param("slug"));
+	if (!project) return c.notFound();
+	return c.html(
+		<Layout title={project.title}>
+			{project.text.page("body")}
+			{project.text("photos")}
+		</Layout>,
+	);
+});
+```
+
+- `editor.items(collection)`: `{ id, slug, title, path, fields }[]`, the shown items in order.
+- `editor.item(collection, slug)`: the same plus `text`, which works as `texts(page)`'s result: `text(name)`, `text.page(name)`, `text.value(name)`. An item text the customer never saved is empty.
+- In the admin the switcher lists the collections (under "Collecties"), not each item. The collection's screen lists its items with ↑/↓ to reorder, Tonen/Verbergen and Verwijderen (after a question), and adds one from a title. A new item goes on top, hidden; it can be shown once its required fields are filled in. The item's screen has tabs: "Gegevens" (title, slug and fields) and one per text.
+- The slug is made from the title on create (`villa-aan-zee`, `-2` when taken) and the customer may change it. The item's texts are stored under its id, so a new slug keeps them; the old URL stops working.
+- Field kind `choices`: several of `options` (categories), stored as a list of their keys.
+
+### Seeding existing items
+
+A site that moves fixed pages to a collection imports them once. `collectionSeed` turns them into SQL; run it with `cf d1 execute`:
+
+```ts
+// scripts/seed-projects.ts, run once: node scripts/seed-projects.ts > seed.sql
+// (src/collections.ts imports nothing from cloudflare:workers, so Node runs it)
+import { collectionSeed } from "@recranet/worker-site-editor";
+import { projects } from "../src/collections.ts";
+
+process.stdout.write(
+	collectionSeed("projects", projects, [
+		{
+			slug: "villa-aan-zee",
+			title: "Villa aan zee",
+			fields: {
+				place: "Ouddorp",
+				categories: ["living"],
+				image: { src: "/img/villa.jpg", alt: "De villa" },
+			},
+			texts: { body: "Een villa in de duinen.\n\nTweede alinea." }, // or Portable Text blocks
+		},
+		// ... in the order the site shows them
+	]),
+);
+```
+
+```bash
+pnpm exec cf d1 execute <database-id> --file seed.sql
+```
+
+- Each item's `id` defaults to its slug. Items whose id or slug is already there are skipped, so running it again keeps the customer's changes.
+- Fields are checked against the collection's; a misfit throws, naming the item. `published: false` seeds a hidden item.
+- Images can be the site's own files (`/img/...`) or uploads already in the bucket (`/media/<id>.<ext>`).
+- Delete the script, the SQL and the old fixed pages after the import: the items live in D1 from then on.
+
 ## Writing a block
 
 A block has two halves with the same `name`: the server half (fields and page render) and, optionally, its own editor UI. They live in separate files because the server renders with Hono JSX and the admin with React.
@@ -213,7 +360,7 @@ export const openingHours = defineBlock({
 });
 ```
 
-- Field kinds: `text`, `textarea`, `url`, `select` (with `options`), `image`, and `items` (a list, each item with its own fields, no lists in lists). `required` makes the editor ask for it and the save refuse without it.
+- Field kinds: `text`, `textarea`, `url`, `select` (with `options`), `choices` (several of `options`, a list of keys), `image`, and `items` (a list, each item with its own fields, no lists in lists). `required` makes the editor ask for it and the save refuse without it.
 - The fields are the stored shape and the server's check on every save: only known fields, safe URLs, images from `/media/` or the site's own files. Whatever the block's editor UI does, the saved value must fit them.
 - `value` is typed from the fields. Text is plain text: render it through JSX, which escapes it.
 - `render(value, ctx)` gets `ctx.image(image, { sizes, class, eager })`, an `<img>` string with a srcset when Images scales uploads, and `ctx.srcset(src, width)`. Render must be synchronous. A render that throws leaves the block out and logs.
