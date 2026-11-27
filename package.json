@@ -1,6 +1,6 @@
 {
 	"name": "@recranet/worker-site-editor",
-	"version": "20261127.0.8",
+	"version": "20261127.0.9",
 	"description": "Text editing for Recranet's customer sites on Cloudflare Workers: sign-in through the console, the Portable Text editor at /admin/, texts in D1 and images in R2.",
 	"license": "UNLICENSED",
 	"type": "module",
